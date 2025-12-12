@@ -1,0 +1,10 @@
+streamlit
+plotly
+umap-learn
+scikit-learn
+numpy
+pandas
+pinecone-client
+chromadb
+qdrant-client
+streamlit-plotly-events

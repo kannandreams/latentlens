@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+streamlit = "*"
+plotly = "*"
+umap-learn = "*"
+scikit-learn = "*"
+numpy = "*"
+pandas = "*"
+pinecone-client = "*"
+chromadb = "*"
+qdrant-client = "*"
+streamlit-plotly-events = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
