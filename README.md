@@ -17,6 +17,6 @@ streamlit run app.py
 Use the **Demo** connector for offline testing. To use a real DB, select Pinecone/Chroma/Qdrant, provide credentials, and enter a query. The UI will show:
 - Blue points: top-k search results
 - Grey points: random background sample
-- Red star: query embedding
+- Red diamond: query embedding
 
 Click a point (requires `streamlit-plotly-events`) or pick an ID to inspect metadata and similarity metrics. A warning will surface when the query looks like an outlier.

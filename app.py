@@ -51,19 +51,27 @@ def _build_pinecone_client(embedder: Callable[[str], list[float]]) -> VectorDBCl
 
     api_key = st.secrets.get("PINECONE_API_KEY") or os.environ.get("PINECONE_API_KEY")
     env = st.secrets.get("PINECONE_ENV") or os.environ.get("PINECONE_ENVIRONMENT")
-    index_name = st.session_state.get("pinecone_index") or st.text_input("Pinecone Index Name")
+    index_name = st.session_state.get("pinecone_index") or st.text_input(
+        "Pinecone Index Name", help="The index to query inside your Pinecone project."
+    )
     if not api_key or not env or not index_name:
         raise ValueError("Missing Pinecone credentials or index name.")
     pinecone.init(api_key=api_key, environment=env)
     index = pinecone.Index(index_name)
-    namespace = st.session_state.get("pinecone_namespace") or st.text_input("Namespace (optional)", "")
+    namespace = st.session_state.get("pinecone_namespace") or st.text_input(
+        "Namespace (optional)", "", help="Optional Pinecone namespace to scope your query."
+    )
     return PineconeAdapter(index=index, namespace=namespace or None, embedder=embedder)
 
 
 def _build_chroma_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
     import chromadb
 
-    collection_name = st.text_input("Chroma Collection Name", value="default")
+    collection_name = st.text_input(
+        "Chroma Collection Name",
+        value="default",
+        help="Name of the Chroma collection to read vectors from.",
+    )
     client = chromadb.Client()
     collection = client.get_or_create_collection(collection_name)
     return ChromaAdapter(collection=collection, embedder=embedder)
@@ -72,9 +80,11 @@ def _build_chroma_client(embedder: Callable[[str], list[float]]) -> VectorDBClie
 def _build_qdrant_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
     from qdrant_client import QdrantClient
 
-    url = st.text_input("Qdrant URL", value="http://localhost:6333")
-    api_key = st.text_input("Qdrant API Key", value="", type="password")
-    collection = st.text_input("Collection Name")
+    url = st.text_input("Qdrant URL", value="http://localhost:6333", help="Base URL of your Qdrant service.")
+    api_key = st.text_input(
+        "Qdrant API Key", value="", type="password", help="Optional Qdrant API key if your cluster enforces auth."
+    )
+    collection = st.text_input("Collection Name", help="Target Qdrant collection containing your vectors.")
     if not collection:
         raise ValueError("Collection name is required for Qdrant.")
     client = QdrantClient(url=url, api_key=api_key or None)
@@ -127,13 +137,48 @@ def build_client(connector: str, embedder: Callable[[str], list[float]]) -> Tupl
 
 with st.sidebar:
     st.header("Connector")
-    connector = st.selectbox("Database", ["Demo", "Pinecone", "Chroma", "Qdrant"], index=0)
-    top_k = st.slider("Top K results", min_value=5, max_value=50, value=10, step=1)
-    background_k = st.slider("Background samples", min_value=100, max_value=1000, value=500, step=50)
-    embedder_choice = st.selectbox("Embedder", ["Demo", "OpenAI"], index=0)
-    run_button = st.button("Run Debugger")
+    connector = st.selectbox(
+        "Database",
+        ["Demo", "Pinecone", "Chroma", "Qdrant"],
+        index=0,
+        help="Pick where to fetch vectors. Demo creates synthetic data locally.",
+    )
+    top_k = st.slider(
+        "Top K results",
+        min_value=5,
+        max_value=50,
+        value=10,
+        step=1,
+        help="How many nearest neighbors to retrieve and plot.",
+    )
+    background_k = st.slider(
+        "Background samples",
+        min_value=100,
+        max_value=1000,
+        value=500,
+        step=50,
+        help="Extra random vectors for context so the 3D plot has shape.",
+    )
+    embedder_choice = st.selectbox(
+        "Embedder",
+        ["Demo", "OpenAI"],
+        index=0,
+        help="Embedding model used to encode the query (and any fetched records).",
+    )
+    run_button = st.button("Run Debugger", help="Execute the retrieval + visualization with the current settings.")
 
-query = st.text_input("Query text", value="red shoes")
+query = st.text_input(
+    "Query text",
+    value="red shoes",
+    help="What you would search for. The app embeds this text and runs the retrieval.",
+)
+
+# Keep latest run results so widget changes (like the ruler target) can update the plot
+# without re-clicking the Run button.
+if "viz_df" not in st.session_state:
+    st.session_state["viz_df"] = None
+if "viz_warning" not in st.session_state:
+    st.session_state["viz_warning"] = None
 
 if run_button:
     try:
@@ -148,39 +193,40 @@ if run_button:
         df = reduce_query_context(ctx)
         warning = detect_void_warning(df)
 
-        st.subheader("Visualization")
-        ruler_target = st.selectbox(
-            "Distance ruler target (optional)", options=["None"] + df[df["label"] == "result"]["id"].tolist()
-        )
-        figure = build_scatter(df, ruler_target_id=None if ruler_target == "None" else ruler_target)
-
-        # Try to enable click-to-inspect if the optional dependency is available.
-        selected_id = None
-        try:
-            from streamlit_plotly_events import plotly_events
-
-            click_data = plotly_events(figure, click_event=True, hover_event=False, override_height=600)
-            if click_data:
-                selected_id = click_data[0]["customdata"][0]
-                st.success(f"Selected point: {selected_id}")
-        except ModuleNotFoundError:
-            st.info("Install `streamlit-plotly-events` for click-to-inspect. Using manual selector instead.")
-
-        st.plotly_chart(figure, use_container_width=True)
-
-        if not selected_id:
-            selected_id = st.selectbox("Inspect metadata for ID", df["id"].tolist())
-
-        if selected_id:
-            point = df[df["id"] == selected_id].iloc[0]
-            st.subheader("Metadata")
-            st.json(point["metadata"])
-            if point.get("cosine_sim_to_query") is not None:
-                st.metric("Cosine similarity to query", f"{point['cosine_sim_to_query']:.3f}")
-            if point.get("score") is not None:
-                st.metric("DB score/distance", f"{point['score']:.3f}")
-
-        if warning:
-            st.warning(warning)
+        st.session_state["viz_df"] = df
+        st.session_state["viz_warning"] = warning
     except Exception as exc:  # pragma: no cover - surfaces in UI
         st.error(f"Error: {exc}")
+
+df = st.session_state.get("viz_df")
+warning = st.session_state.get("viz_warning")
+
+if df is not None:
+    st.subheader("Visualization")
+    st.caption("3D projection of the query (red), retrieved results (blue), and background vectors (gray).")
+    ruler_target = st.selectbox(
+        "Distance ruler target (optional)",
+        options=["None"] + df[df["label"] == "result"]["id"].tolist(),
+        help="Draw an orange line from the query point to a chosen result to see relative distance.",
+    )
+    figure = build_scatter(df, ruler_target_id=None if ruler_target == "None" else ruler_target)
+
+    st.plotly_chart(figure, use_container_width=True)
+
+    selected_id = st.selectbox(
+        "Inspect metadata for ID",
+        df["id"].tolist(),
+        help="Pick any plotted point to inspect its metadata and similarity details.",
+    )
+
+    if selected_id:
+        point = df[df["id"] == selected_id].iloc[0]
+        st.subheader("Metadata")
+        st.json(point["metadata"])
+        if point.get("cosine_sim_to_query") is not None:
+            st.metric("Cosine similarity to query", f"{point['cosine_sim_to_query']:.3f}")
+        if point.get("score") is not None:
+            st.metric("DB score/distance", f"{point['score']:.3f}")
+
+    if warning:
+        st.warning(warning)

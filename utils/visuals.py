@@ -17,7 +17,7 @@ COLOR_MAP = {
 SYMBOL_MAP = {
     "background": "circle",
     "result": "circle",
-    "query": "star",
+    "query": "diamond",
 }
 
 
