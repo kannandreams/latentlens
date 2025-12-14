@@ -10,7 +10,7 @@ from __future__ import annotations
 import abc
 import random
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 
 Vector = List[float]
@@ -47,14 +47,23 @@ class VectorDBClient(abc.ABC):
         """Return the query embedding and top_k matching vectors."""
 
     @abc.abstractmethod
-    def random_sample(self, k: int = 500) -> List[VectorRecord]:
+    def random_sample(self, k: int = 500, exclude_ids: Optional[Set[str]] = None) -> List[VectorRecord]:
         """Return approximately random records for background context."""
 
     def retrieve_with_background(
         self, query: str, top_k: int = 10, background_k: int = 500
     ) -> QueryWithContext:
         query_vector, results = self.search(query=query, top_k=top_k)
-        background = self.random_sample(k=background_k)
+        exclude_ids = {record.id for record in results}
+        background = self.random_sample(k=background_k, exclude_ids=exclude_ids)
+        if len(background) < background_k:
+            background.extend(
+                _synthetic_background(
+                    needed=background_k - len(background),
+                    dim=len(query_vector),
+                    existing_ids=exclude_ids | {rec.id for rec in background},
+                )
+            )
         return QueryWithContext(
             query=query,
             query_vector=query_vector,
@@ -67,6 +76,27 @@ class VectorDBClient(abc.ABC):
         if not self.embedder:
             raise ValueError("No embedder provided; cannot create query vector.")
         return self.embedder(text)
+
+
+def _synthetic_background(needed: int, dim: int, existing_ids: Set[str]) -> List[VectorRecord]:
+    """Create placeholder background vectors when real samples are too few."""
+    records: List[VectorRecord] = []
+    counter = 0
+    while len(records) < needed:
+        counter += 1
+        doc_id = f"bg-synth-{counter}"
+        if doc_id in existing_ids:
+            continue
+        vector = [random.gauss(0, 1) for _ in range(dim)]
+        records.append(
+            VectorRecord(
+                id=doc_id,
+                vector=vector,
+                metadata={"source": "synthetic_background"},
+                score=None,
+            )
+        )
+    return records
 
 
 class PineconeAdapter(VectorDBClient):
@@ -102,7 +132,7 @@ class PineconeAdapter(VectorDBClient):
         ]
         return query_vector, records
 
-    def random_sample(self, k: int = 500) -> List[VectorRecord]:
+    def random_sample(self, k: int = 500, exclude_ids: Optional[Set[str]] = None) -> List[VectorRecord]:
         """Pinecone does not expose random scan; approximate via noisy queries."""
         if not hasattr(self.index, "describe_index_stats"):
             raise ValueError("Index missing describe_index_stats; cannot sample.")
@@ -127,9 +157,12 @@ class PineconeAdapter(VectorDBClient):
                 include_metadata=True,
             )
             for match in response["matches"]:
+                match_id = str(match["id"])
+                if exclude_ids and match_id in exclude_ids:
+                    continue
                 collected.append(
                     VectorRecord(
-                        id=str(match["id"]),
+                        id=match_id,
                         vector=match["values"],
                         metadata=match.get("metadata", {}) or {},
                         score=match.get("score"),
@@ -183,7 +216,7 @@ class ChromaAdapter(VectorDBClient):
             )
         return query_vector, records
 
-    def random_sample(self, k: int = 500) -> List[VectorRecord]:
+    def random_sample(self, k: int = 500, exclude_ids: Optional[Set[str]] = None) -> List[VectorRecord]:
         count = self.collection.count()
         if count == 0:
             return []
@@ -198,9 +231,12 @@ class ChromaAdapter(VectorDBClient):
         )
         records: List[VectorRecord] = []
         for idx, vector in enumerate(results["embeddings"]):
+            doc_id = str(results["ids"][idx])
+            if exclude_ids and doc_id in exclude_ids:
+                continue
             records.append(
                 VectorRecord(
-                    id=str(results["ids"][idx]),
+                    id=doc_id,
                     vector=vector,
                     metadata=results["metadatas"][idx] or {},
                     score=None,
@@ -242,7 +278,7 @@ class QdrantAdapter(VectorDBClient):
         ]
         return query_vector, records
 
-    def random_sample(self, k: int = 500) -> List[VectorRecord]:
+    def random_sample(self, k: int = 500, exclude_ids: Optional[Set[str]] = None) -> List[VectorRecord]:
         records: List[VectorRecord] = []
         page_size = min(k, 128)
         offset: Optional[int] = None
@@ -257,9 +293,12 @@ class QdrantAdapter(VectorDBClient):
             )
             points, next_offset = scroll_result
             for point in points:
+                point_id = str(point.id)
+                if exclude_ids and point_id in exclude_ids:
+                    continue
                 records.append(
                     VectorRecord(
-                        id=str(point.id),
+                        id=point_id,
                         vector=point.vector,
                         metadata=point.payload or {},
                         score=None,
