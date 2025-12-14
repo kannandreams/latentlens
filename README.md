@@ -1,22 +1,20 @@
 ## Vector Debugger
 
-Streamlit tool for inspecting embeddings across Pinecone, Chroma, and Qdrant with a 3D Plotly view.
+Streamlit app for inspecting embeddings with a 3D Plotly view. Ships with a synthetic demo mode plus a Chroma connector and inline ingestion helper.
 
-![alt text](<vector debugger.gif>)
+![Vector Debugger](<vector debugger.gif>)
 
-### Features
-- Works with demo data or live Pinecone/Chroma/Qdrant connectors.
-- For Chroma, paste document text directly in the app to embed and store it in the chosen collection.
-- Choose a deterministic demo embedder or OpenAI (`text-embedding-3-small`) for queries.
-- PCA → UMAP reduction into a 3D scatter showing query (red), results (blue), and background (gray) with an optional distance ruler.
-- Inspect metadata, DB scores, and cosine similarity for any plotted point; heuristics flag isolated queries.
+### What it does
+- Demo mode for offline experimentation; Chroma connector to inspect a live collection.
+- Deterministic demo embedder or OpenAI (`text-embedding-3-small`) for queries and Chroma writes.
+- PCA → UMAP reduction into a 3D scatter: query (red diamond), results (blue), background (gray).
+- Optional distance ruler from the query to any result, plus metadata, DB score, and cosine similarity readouts.
+- Flags when the query looks isolated relative to retrieved neighbors.
 
 ### Requirements
-- Python 3.9+ and `pip` (or `uv` if you prefer `uv pip install -r requirements.txt`).
-- OpenAI: set `OPENAI_API_KEY` (env var or `st.secrets`).
-- Pinecone: `PINECONE_API_KEY` plus `PINECONE_ENVIRONMENT` (or `PINECONE_ENV` in `st.secrets`); index/namespace are provided in the UI.
-- Qdrant: cluster URL and optional API key entered in the UI.
-- Chroma: collection name (defaults to `default`).
+- Python 3.9+ and `pip` (or `uv`; `uv pip install -r requirements.txt` also works).
+- For OpenAI embeddings: set `OPENAI_API_KEY` (environment variable or `st.secrets`).
+- For Chroma: a collection name (defaults to `default`). The default client uses local storage; point it at your own Chroma instance if desired.
 
 ### Setup
 ```bash
@@ -31,16 +29,13 @@ streamlit run app.py
 ```
 
 ### How to use
-1) Pick a connector in the sidebar (`Demo` for offline synthetic data) and select your embedder.
-2) If you chose Chroma, set the collection name and optionally paste text into **Chroma: store pasted text** to embed/store snippets.
-3) Enter the query text, adjust `Top K` and `Background samples`, then click **Run Debugger**.
-4) Pan/zoom the 3D plot, select a distance ruler target if desired, and choose any ID to inspect metadata and similarity metrics. Warnings surface when the query appears isolated.
+1) Open the app and choose a connector in the sidebar: `Demo` (offline synthetic vectors) or `Chroma` (live collection). Pick an embedder (`Demo` or `OpenAI`).
+2) For Chroma, set the collection name. Use **Chroma: store pasted text** to embed and add snippets directly into that collection (optional IDs and source tags supported).
+3) Enter your query text, adjust `Top K results` and `Background samples`, then click **Run Debugger**.
+4) Explore the 3D plot: pan/zoom, pick a `Distance ruler target` to see an orange line from the query to a chosen result, and select any ID to inspect metadata, cosine similarity to the query, and the DB score/distance.
+5) If a warning appears, it signals the query is visually isolated—use it as a hint to tweak data or parameters.
 
-
-
-• - The “distance ruler target” option simply draws an orange line from the query point (red diamond) to the result you pick in the 3D plot (app.py, utils/visuals.py). It measures straight-line (Euclidean)
-    distance in the reduced 3D space produced by PCA → UMAP, not the raw vector DB distance. Use it to compare relative closeness between results; shorter line ≈ more similar in this visualization.
-  - “Inspect metadata for ID” lets you pick any plotted point and see its stored metadata plus metrics: cosine_sim_to_query (computed on the original high‑dim vectors against the query) and score (whatever the DB
-    returned—could be similarity or distance depending on the backend, as shown in core/math_engine.py and the connector adapters).
-  - When you type “red shoes” as the query, the app embeds that text, retrieves neighbors, reduces all vectors to 3D, and plots them: query in red, results in blue, background in gray. The ruler distance is only
-    an approximate visual cue in that 3D projection; rely on the cosine similarity and DB score for the actual numeric closeness.
+### Notes
+- The distance ruler measures straight-line distance in the reduced 3D projection, not the raw vector-space metric; rely on cosine similarity and DB scores for actual closeness.
+- If a connector cannot return enough background vectors, the app pads with synthetic points so the 3D plot still has structure; those synthetic IDs are prefixed with `bg-synth-`.
+- Only Demo and Chroma are wired into the UI today; Pinecone and Qdrant adapters live in `core/connectors.py` but are not exposed in `app.py`.
