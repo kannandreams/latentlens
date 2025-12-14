@@ -6,7 +6,7 @@ Streamlit app for inspecting embeddings with a 3D Plotly view. Ships with a synt
 
 ### What it does
 - Demo mode for offline experimentation; Chroma connector to inspect a live collection.
-- Deterministic demo embedder or OpenAI (`text-embedding-3-small`) for queries and Chroma writes.
+- Deterministic demo embedder, a local MiniLM (`sentence-transformers/paraphrase-MiniLM-L3-v2`), or OpenAI (`text-embedding-3-small`) for queries and Chroma writes.
 - PCA → UMAP reduction into a 3D scatter: query (red diamond), results (blue), background (gray).
 - Optional distance ruler from the query to any result, plus metadata, DB score, and cosine similarity readouts.
 - Flags when the query looks isolated relative to retrieved neighbors.
@@ -14,6 +14,7 @@ Streamlit app for inspecting embeddings with a 3D Plotly view. Ships with a synt
 ### Requirements
 - Python 3.9+ and `pip` (or `uv`; `uv pip install -r requirements.txt` also works).
 - For OpenAI embeddings: set `OPENAI_API_KEY` (environment variable or `st.secrets`).
+- For the local MiniLM embedder: first run will download the model via `sentence-transformers`.
 - For Chroma: a collection name (defaults to `default`). The default client uses local storage; point it at your own Chroma instance if desired.
 
 ### Setup
@@ -29,7 +30,7 @@ streamlit run app.py
 ```
 
 ### How to use
-1) Open the app and choose a connector in the sidebar: `Demo` (offline synthetic vectors) or `Chroma` (live collection). Pick an embedder (`Demo` or `OpenAI`).
+1) Open the app and choose a connector in the sidebar: `Demo` (offline synthetic vectors) or `Chroma` (live collection). Pick an embedder (`Demo`, `MiniLM (local)`, or `OpenAI`).
 2) For Chroma, set the collection name. Use **Chroma: store pasted text** to embed and add snippets directly into that collection (optional IDs and source tags supported).
 3) Enter your query text, adjust `Top K results` and `Background samples`, then click **Run Debugger**.
 4) Explore the 3D plot: pan/zoom, pick a `Distance ruler target` to see an orange line from the query to a chosen result, and select any ID to inspect metadata, cosine similarity to the query, and the DB score/distance.

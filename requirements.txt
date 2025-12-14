@@ -8,3 +8,4 @@ pinecone-client
 chromadb
 qdrant-client
 streamlit-plotly-events
+sentence-transformers

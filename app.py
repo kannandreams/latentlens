@@ -1,6 +1,7 @@
-"""Streamlit UI entry point for the Vector Debugger."""
+"""Streamlit UI entry point for Latent Lens (Vector Debugger)."""
 from __future__ import annotations
 
+import os
 import uuid
 
 import streamlit as st
@@ -10,9 +11,35 @@ from core.connectors import ChromaAdapter
 from core.math_engine import detect_void_warning, reduce_query_context
 from utils.visuals import build_scatter
 
+st.set_page_config(page_title="Latent Lens — Vector Debugger", layout="wide")
+st.title("🔍 Latent Lens")
+st.caption("Vector Debugger")
 
-st.set_page_config(page_title="Vector Debugger", layout="wide")
-st.title("🔍 The Vector Debugger")
+if "show_help" not in st.session_state:
+    st.session_state["show_help"] = False
+
+
+def has_openai_key() -> bool:
+    """Check for an OpenAI key in Streamlit secrets or environment variables."""
+    return bool(st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+
+
+def render_help_panel() -> None:
+    st.info(
+        """**How to use Latent Lens**
+- Pick a connector and embedder in the sidebar. Demo generates synthetic data; Chroma reads/writes a real collection.
+- Tune `Top K results` and `Background samples` to control retrieval depth and how much context appears in the 3D plot.
+- Enter a query and click `Run Latent Lens` to embed the text and fetch nearest neighbors.
+- In `Visualization`, optionally draw a distance ruler to a result and pick any point to inspect its metadata and scores.
+- Using Chroma? Paste document text under "Chroma: store pasted text" to embed and save it into the active collection."""
+    )
+
+
+if st.button("How to use", help="Open a quick walkthrough without leaving the app."):
+    st.session_state["show_help"] = not st.session_state["show_help"]
+
+if st.session_state["show_help"]:
+    render_help_panel()
 
 
 with st.sidebar:
@@ -41,11 +68,19 @@ with st.sidebar:
     )
     embedder_choice = st.selectbox(
         "Embedder",
-        ["Demo", "OpenAI"],
+        ["Demo", "MiniLM (local)", "OpenAI"],
         index=0,
         help="Embedding model used to encode the query (and any fetched records).",
     )
-    run_button = st.button("Run Debugger", help="Execute the retrieval + visualization with the current settings.")
+    run_button = st.button(
+        "Run Latent Lens",
+        help="Execute the retrieval + visualization with the current settings.",
+    )
+    openai_key_missing = embedder_choice == "OpenAI" and not has_openai_key()
+    if openai_key_missing:
+        st.warning(
+            "OpenAI embedder selected but no `OPENAI_API_KEY` found. Set it in the environment or `st.secrets`."
+        )
 
 query = st.text_input(
     "Query text",
@@ -84,6 +119,8 @@ if connector == "Chroma":
     if store_button:
         if not pasted_text.strip():
             st.error("Please paste document text before storing it.")
+        elif embedder_choice == "OpenAI" and openai_key_missing:
+            st.error("Set `OPENAI_API_KEY` (env var or `st.secrets`) before using the OpenAI embedder.")
         else:
             try:
                 embedder = get_embedder(embedder_choice)
@@ -111,6 +148,8 @@ if run_button:
         if connector == "Demo":
             ctx = generate_demo_context(query=query, top_k=top_k, background_k=background_k)
         else:
+            if embedder_choice == "OpenAI" and openai_key_missing:
+                raise ValueError("Set `OPENAI_API_KEY` in env or `st.secrets` to use the OpenAI embedder.")
             embedder = get_embedder(embedder_choice)
             client, name = build_client(connector, embedder, chroma_collection_name)
             with st.spinner(f"Querying {name}..."):

@@ -17,6 +17,24 @@ def demo_embedder(text: str) -> list[float]:
     return [rng.random() for _ in range(64)]
 
 
+@st.cache_resource(show_spinner=False)
+def _load_minilm(model_name: str) -> "SentenceTransformer":
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(model_name)
+
+
+def local_minilm_embedder(model: str = "sentence-transformers/paraphrase-MiniLM-L3-v2") -> Callable[[str], list[float]]:
+    """Lightweight local embedder (256-dim MiniLM)."""
+    encoder = _load_minilm(model)
+
+    def _embed(text: str) -> list[float]:
+        vector = encoder.encode(text, convert_to_numpy=True, show_progress_bar=False)
+        return vector.tolist()
+
+    return _embed
+
+
 def openai_embedder(model: str = "text-embedding-3-small") -> Callable[[str], list[float]]:
     from openai import OpenAI
 
@@ -33,7 +51,11 @@ def openai_embedder(model: str = "text-embedding-3-small") -> Callable[[str], li
 
 
 def get_embedder(choice: str) -> Callable[[str], list[float]]:
-    return demo_embedder if choice == "Demo" else openai_embedder()
+    if choice == "Demo":
+        return demo_embedder
+    if choice == "MiniLM (local)":
+        return local_minilm_embedder()
+    return openai_embedder()
 
 
 def build_chroma_client(
