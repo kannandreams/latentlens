@@ -57,18 +57,28 @@ def reduce_query_context(
     if matrix.ndim != 2:
         raise ValueError("Input vectors must form a 2D matrix.")
 
+    n_samples, n_features = matrix.shape
+    if n_samples < 2:
+        raise ValueError("Need at least two vectors (query plus one other) to visualize.")
+
     # Adjust PCA dimensionality based on data volume.
-    pca_n = min(pca_components, matrix.shape[1], max(2, matrix.shape[0] - 1))
+    pca_n = min(pca_components, n_features, max(2, n_samples - 1))
     pca = PCA(n_components=pca_n, random_state=random_state)
     pca_result = pca.fit_transform(matrix)
 
-    umap_components = min(umap_components, pca_result.shape[1])
-    umap_model = UMAP(n_components=umap_components, random_state=random_state)
-    reduced = umap_model.fit_transform(pca_result)
+    # UMAP struggles on tiny datasets; fall back to PCA-only if we have <5 points.
+    umap_n = max(1, min(umap_components, pca_result.shape[1]))
+    if n_samples >= 5 and umap_n > 0:
+        umap_model = UMAP(n_components=umap_n, random_state=random_state)
+        reduced = umap_model.fit_transform(pca_result)
+    else:
+        reduced = pca_result[:, :umap_n]
 
     # Pad to 3 dimensions if UMAP returned fewer columns.
     if reduced.shape[1] == 2:
         reduced = np.concatenate([reduced, np.zeros((reduced.shape[0], 1))], axis=1)
+    elif reduced.shape[1] == 1:
+        reduced = np.concatenate([reduced, np.zeros((reduced.shape[0], 2))], axis=1)
 
     query_vector = matrix[0]
     rows: List[ReducedEmbedding] = []

@@ -151,12 +151,25 @@ class ChromaAdapter(VectorDBClient):
         super().__init__(embedder=embedder)
         self.collection = collection
 
+    def add_text(self, doc_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Embed and store a single text snippet in the collection."""
+        meta = dict(metadata or {})
+        meta.setdefault("content", text)
+        embedding = self._embed(text)
+        self.collection.add(
+            ids=[doc_id],
+            embeddings=[embedding],
+            metadatas=[meta],
+            documents=[text],
+        )
+
     def search(self, query: str, top_k: int = 10) -> Tuple[Vector, List[VectorRecord]]:
         query_vector = self._embed(query)
         results = self.collection.query(
             query_embeddings=[query_vector],
             n_results=top_k,
-            include=["embeddings", "metadatas", "distances", "ids"],
+            # Chroma always returns IDs; only request supported fields.
+            include=["embeddings", "metadatas", "distances"],
         )
         records = []
         for idx, vector in enumerate(results["embeddings"][0]):
@@ -181,7 +194,7 @@ class ChromaAdapter(VectorDBClient):
             where=None,
             limit=limit,
             offset=offset,
-            include=["embeddings", "metadatas", "ids"],
+            include=["embeddings", "metadatas"],
         )
         records: List[VectorRecord] = []
         for idx, vector in enumerate(results["embeddings"]):

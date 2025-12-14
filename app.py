@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import random
+import uuid
 from typing import Any, Callable, Tuple
 
 import numpy as np
@@ -46,6 +47,10 @@ def _openai_embedder(model: str = "text-embedding-3-small") -> Callable[[str], l
     return _embed
 
 
+def _get_embedder(choice: str) -> Callable[[str], list[float]]:
+    return _demo_embedder if choice == "Demo" else _openai_embedder()
+
+
 def _build_pinecone_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
     import pinecone
 
@@ -64,17 +69,23 @@ def _build_pinecone_client(embedder: Callable[[str], list[float]]) -> VectorDBCl
     return PineconeAdapter(index=index, namespace=namespace or None, embedder=embedder)
 
 
-def _build_chroma_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
+def _build_chroma_client(embedder: Callable[[str], list[float]], collection_name: str | None = None) -> VectorDBClient:
     import chromadb
 
-    collection_name = st.text_input(
-        "Chroma Collection Name",
-        value="default",
-        help="Name of the Chroma collection to read vectors from.",
-    )
+    collection_name = collection_name or st.session_state.get("chroma_collection_name")
+    if not collection_name:
+        collection_name = st.text_input(
+            "Chroma Collection Name",
+            value="default",
+            help="Name of the Chroma collection to read vectors from.",
+            key="chroma_collection_fallback",
+        )
     client = chromadb.Client()
     collection = client.get_or_create_collection(collection_name)
-    return ChromaAdapter(collection=collection, embedder=embedder)
+    return ChromaAdapter(
+        collection=collection,
+        embedder=embedder,
+    )
 
 
 def _build_qdrant_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
@@ -125,11 +136,13 @@ def _generate_demo_context(query: str, top_k: int, background_k: int) -> QueryWi
     )
 
 
-def build_client(connector: str, embedder: Callable[[str], list[float]]) -> Tuple[VectorDBClient, str]:
+def build_client(
+    connector: str, embedder: Callable[[str], list[float]], chroma_collection_name: str | None = None
+) -> Tuple[VectorDBClient, str]:
     if connector == "Pinecone":
         return _build_pinecone_client(embedder), "Pinecone"
     if connector == "Chroma":
-        return _build_chroma_client(embedder), "Chroma"
+        return _build_chroma_client(embedder, collection_name=chroma_collection_name), "Chroma"
     if connector == "Qdrant":
         return _build_qdrant_client(embedder), "Qdrant"
     raise ValueError(f"Unsupported connector: {connector}")
@@ -173,6 +186,52 @@ query = st.text_input(
     help="What you would search for. The app embeds this text and runs the retrieval.",
 )
 
+chroma_collection_name: str | None = None
+if connector == "Chroma":
+    chroma_collection_name = st.text_input(
+        "Chroma Collection Name",
+        value=st.session_state.get("chroma_collection_name", "default"),
+        help="Name of the Chroma collection to read from and write to.",
+        key="chroma_collection_name",
+    )
+    chroma_collection_name = (chroma_collection_name or "default").strip()
+
+# Inline Chroma ingestion helper so users can paste raw text into the current collection.
+if connector == "Chroma":
+    st.subheader("Chroma: store pasted text")
+    st.caption("Paste any document text to embed and store it in the selected Chroma collection.")
+    with st.form("chroma_ingest_form"):
+        pasted_text = st.text_area("Document text", placeholder="Copy/paste text to embed", height=160)
+        doc_id_input = st.text_input(
+            "Document ID (optional)",
+            value=f"doc-{uuid.uuid4().hex[:8]}",
+            help="Provide an ID or leave the default to avoid collisions.",
+        )
+        source_label = st.text_input(
+            "Source label (optional)",
+            value="clipboard",
+            help="Optional tag to remember where this text came from.",
+        )
+        store_button = st.form_submit_button("Embed and store in Chroma")
+
+    if store_button:
+        if not pasted_text.strip():
+            st.error("Please paste document text before storing it.")
+        else:
+            try:
+                embedder = _get_embedder(embedder_choice)
+                chroma_client, _ = build_client("Chroma", embedder, chroma_collection_name)
+                if not isinstance(chroma_client, ChromaAdapter):
+                    raise ValueError("Failed to initialize Chroma client.")
+                doc_id = doc_id_input.strip() or f"doc-{uuid.uuid4().hex[:8]}"
+                metadata = {"content": pasted_text.strip()}
+                if source_label.strip():
+                    metadata["source"] = source_label.strip()
+                chroma_client.add_text(doc_id=doc_id, text=pasted_text.strip(), metadata=metadata)
+                st.success(f"Stored '{doc_id}' in Chroma collection '{chroma_collection_name}'.")
+            except Exception as exc:  # pragma: no cover - surfaces in UI
+                st.error(f"Error storing document: {exc}")
+
 # Keep latest run results so widget changes (like the ruler target) can update the plot
 # without re-clicking the Run button.
 if "viz_df" not in st.session_state:
@@ -185,8 +244,8 @@ if run_button:
         if connector == "Demo":
             ctx = _generate_demo_context(query=query, top_k=top_k, background_k=background_k)
         else:
-            embedder = _demo_embedder if embedder_choice == "Demo" else _openai_embedder()
-            client, name = build_client(connector, embedder)
+            embedder = _get_embedder(embedder_choice)
+            client, name = build_client(connector, embedder, chroma_collection_name)
             with st.spinner(f"Querying {name}..."):
                 ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
 
