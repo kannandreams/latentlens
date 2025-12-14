@@ -1,23 +1,12 @@
 """Streamlit UI entry point for the Vector Debugger."""
 from __future__ import annotations
 
-import os
-import random
 import uuid
-from typing import Any, Callable, Tuple
 
-import numpy as np
-import pandas as pd
 import streamlit as st
 
-from core.connectors import (
-    ChromaAdapter,
-    PineconeAdapter,
-    QdrantAdapter,
-    QueryWithContext,
-    VectorRecord,
-    VectorDBClient,
-)
+from core.client_factory import build_client, generate_demo_context, get_embedder
+from core.connectors import ChromaAdapter
 from core.math_engine import detect_void_warning, reduce_query_context
 from utils.visuals import build_scatter
 
@@ -26,133 +15,11 @@ st.set_page_config(page_title="Vector Debugger", layout="wide")
 st.title("🔍 The Vector Debugger")
 
 
-def _demo_embedder(text: str) -> list[float]:
-    """Stable pseudo-embedding for demo purposes."""
-    rng = random.Random(hash(text) % (2**32))
-    return [rng.random() for _ in range(64)]
-
-
-def _openai_embedder(model: str = "text-embedding-3-small") -> Callable[[str], list[float]]:
-    from openai import OpenAI
-
-    api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not found in environment or Streamlit secrets.")
-    client = OpenAI(api_key=api_key)
-
-    def _embed(text: str) -> list[float]:
-        resp = client.embeddings.create(model=model, input=text)
-        return resp.data[0].embedding
-
-    return _embed
-
-
-def _get_embedder(choice: str) -> Callable[[str], list[float]]:
-    return _demo_embedder if choice == "Demo" else _openai_embedder()
-
-
-def _build_pinecone_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
-    import pinecone
-
-    api_key = st.secrets.get("PINECONE_API_KEY") or os.environ.get("PINECONE_API_KEY")
-    env = st.secrets.get("PINECONE_ENV") or os.environ.get("PINECONE_ENVIRONMENT")
-    index_name = st.session_state.get("pinecone_index") or st.text_input(
-        "Pinecone Index Name", help="The index to query inside your Pinecone project."
-    )
-    if not api_key or not env or not index_name:
-        raise ValueError("Missing Pinecone credentials or index name.")
-    pinecone.init(api_key=api_key, environment=env)
-    index = pinecone.Index(index_name)
-    namespace = st.session_state.get("pinecone_namespace") or st.text_input(
-        "Namespace (optional)", "", help="Optional Pinecone namespace to scope your query."
-    )
-    return PineconeAdapter(index=index, namespace=namespace or None, embedder=embedder)
-
-
-def _build_chroma_client(embedder: Callable[[str], list[float]], collection_name: str | None = None) -> VectorDBClient:
-    import chromadb
-
-    collection_name = collection_name or st.session_state.get("chroma_collection_name")
-    if not collection_name:
-        collection_name = st.text_input(
-            "Chroma Collection Name",
-            value="default",
-            help="Name of the Chroma collection to read vectors from.",
-            key="chroma_collection_fallback",
-        )
-    client = chromadb.Client()
-    collection = client.get_or_create_collection(collection_name)
-    return ChromaAdapter(
-        collection=collection,
-        embedder=embedder,
-    )
-
-
-def _build_qdrant_client(embedder: Callable[[str], list[float]]) -> VectorDBClient:
-    from qdrant_client import QdrantClient
-
-    url = st.text_input("Qdrant URL", value="http://localhost:6333", help="Base URL of your Qdrant service.")
-    api_key = st.text_input(
-        "Qdrant API Key", value="", type="password", help="Optional Qdrant API key if your cluster enforces auth."
-    )
-    collection = st.text_input("Collection Name", help="Target Qdrant collection containing your vectors.")
-    if not collection:
-        raise ValueError("Collection name is required for Qdrant.")
-    client = QdrantClient(url=url, api_key=api_key or None)
-    return QdrantAdapter(client=client, collection_name=collection, embedder=embedder)
-
-
-def _generate_demo_context(query: str, top_k: int, background_k: int) -> QueryWithContext:
-    """Create synthetic vectors for local demo."""
-    dim = 64
-    query_vector = np.random.normal(size=dim).tolist()
-    results = []
-    for i in range(top_k):
-        vec = (np.array(query_vector) + np.random.normal(scale=0.2, size=dim)).tolist()
-        results.append(
-            VectorRecord(
-                id=f"demo_result_{i}",
-                vector=vec,
-                metadata={"content": f"Synthetic result {i}", "source": "demo"},
-                score=float(np.random.random()),
-            )
-        )
-
-    background = []
-    for i in range(background_k):
-        background.append(
-            VectorRecord(
-                id=f"bg_{i}",
-                vector=np.random.normal(size=dim).tolist(),
-                metadata={"content": f"Background vector {i}"},
-                score=None,
-            )
-        )
-    return QueryWithContext(
-        query=query,
-        query_vector=query_vector,
-        results=results,
-        background=background,
-    )
-
-
-def build_client(
-    connector: str, embedder: Callable[[str], list[float]], chroma_collection_name: str | None = None
-) -> Tuple[VectorDBClient, str]:
-    if connector == "Pinecone":
-        return _build_pinecone_client(embedder), "Pinecone"
-    if connector == "Chroma":
-        return _build_chroma_client(embedder, collection_name=chroma_collection_name), "Chroma"
-    if connector == "Qdrant":
-        return _build_qdrant_client(embedder), "Qdrant"
-    raise ValueError(f"Unsupported connector: {connector}")
-
-
 with st.sidebar:
     st.header("Connector")
     connector = st.selectbox(
         "Database",
-        ["Demo", "Pinecone", "Chroma", "Qdrant"],
+        ["Demo", "Chroma"],
         index=0,
         help="Pick where to fetch vectors. Demo creates synthetic data locally.",
     )
@@ -219,7 +86,7 @@ if connector == "Chroma":
             st.error("Please paste document text before storing it.")
         else:
             try:
-                embedder = _get_embedder(embedder_choice)
+                embedder = get_embedder(embedder_choice)
                 chroma_client, _ = build_client("Chroma", embedder, chroma_collection_name)
                 if not isinstance(chroma_client, ChromaAdapter):
                     raise ValueError("Failed to initialize Chroma client.")
@@ -242,9 +109,9 @@ if "viz_warning" not in st.session_state:
 if run_button:
     try:
         if connector == "Demo":
-            ctx = _generate_demo_context(query=query, top_k=top_k, background_k=background_k)
+            ctx = generate_demo_context(query=query, top_k=top_k, background_k=background_k)
         else:
-            embedder = _get_embedder(embedder_choice)
+            embedder = get_embedder(embedder_choice)
             client, name = build_client(connector, embedder, chroma_collection_name)
             with st.spinner(f"Querying {name}..."):
                 ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
