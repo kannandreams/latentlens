@@ -24,6 +24,10 @@ def has_openai_key() -> bool:
     return bool(st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY"))
 
 
+APP_AUTHOR = "Kannan Kalidasan"
+APP_WEBSITE = "https://kannandreams.github.io/"
+
+
 def render_help_panel() -> None:
     st.info(
         """**How to use Latent Lens**
@@ -81,6 +85,38 @@ with st.sidebar:
         st.warning(
             "OpenAI embedder selected but no `OPENAI_API_KEY` found. Set it in the environment or `st.secrets`."
         )
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] .sidebar-footer {
+            margin-top: 1.5rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #e6e6e6;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        [data-testid="stSidebar"] .sidebar-footer a {
+            color: #0d6efd;
+            text-decoration: underline;
+            font-weight: 600;
+        }
+        [data-testid="stSidebar"] .sidebar-footer a:hover {
+            color: #0b5ed7;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class="sidebar-footer">
+            <div><strong>Author:</strong> {APP_AUTHOR}</div>
+            <div><a href="{APP_WEBSITE}" target="_blank" rel="noopener noreferrer">{APP_WEBSITE}</a></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 query = st.text_input(
     "Query text",
