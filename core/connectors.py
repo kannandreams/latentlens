@@ -54,10 +54,15 @@ class VectorDBClient(abc.ABC):
         """Optional: List records for inspection. Default implementation returns empty."""
         return []
 
+    def reset_collection(self) -> int:
+        """Delete all records in the collection. Returns count of deleted records."""
+        return 0
+
     def retrieve_with_background(
         self, query: str, top_k: int = 10, background_k: int = 500
     ) -> QueryWithContext:
         query_vector, results = self.search(query=query, top_k=top_k)
+
         exclude_ids = {record.id for record in results}
         background = self.random_sample(k=background_k, exclude_ids=exclude_ids)
         if len(background) < background_k:
@@ -285,6 +290,16 @@ class ChromaAdapter(VectorDBClient):
                 )
             )
         return records
+
+    def reset_collection(self) -> int:
+        """Delete all records in the collection."""
+        all_records = self.list_records(limit=10000)
+        if not all_records:
+            return 0
+        
+        ids_to_delete = [rec.id for rec in all_records]
+        self.collection.delete(ids=ids_to_delete)
+        return len(ids_to_delete)
 
 
 class QdrantAdapter(VectorDBClient):

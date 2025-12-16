@@ -115,13 +115,30 @@ demo_tab, docs_tab, inspector_tab = st.tabs(["Demo", "Documentation", "Manage Co
 with inspector_tab:
     st.subheader("Manage Collection")
     
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
             insp_collection = st.text_input("Collection Name", value="default", key="insp_col_name")
     with col2:
             st.write("") 
             st.write("")
             load_btn = st.button("Load Records", key="insp_load_btn")
+    with col3:
+            st.write("")
+            st.write("")
+            reset_btn = st.button("Reset Collection", key="insp_reset_btn", type="primary")
+
+    if reset_btn:
+        try:
+             embedder_ref = get_embedder(embedder_choice)
+             c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
+             if isinstance(c_client, ChromaAdapter):
+                 count = c_client.reset_collection()
+                 st.success(f"Deleted {count} records from '{insp_collection}'.")
+                 st.rerun()
+             else:
+                 st.warning("Reset only supported for Chroma.")
+        except Exception as e:
+             st.error(f"Error resetting collection: {e}")
 
     # --- Ingestion Form (Moved here) ---
     st.divider()
