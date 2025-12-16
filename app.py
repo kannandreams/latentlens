@@ -109,7 +109,53 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-demo_tab, docs_tab = st.tabs(["Demo", "Documentation"])
+chroma_collection_name = None
+demo_tab, docs_tab, inspector_tab = st.tabs(["Demo", "Documentation", "Collection Inspector"])
+
+with inspector_tab:
+    st.subheader("Collection Inspector")
+    st.caption("View raw records stored in the current Chroma collection (in-memory).")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+            insp_collection = st.text_input("Collection Name", value=chroma_collection_name or "default", key="insp_col_name")
+    with col2:
+            # Add a bit of spacing to align with input
+            st.write("") 
+            st.write("")
+            load_btn = st.button("Load Records", key="insp_load_btn")
+
+    if load_btn:
+        try:
+            # Re-use embedder choice from sidebar
+            embedder_ref = get_embedder(embedder_choice)
+            # Build client just to access the collection
+            c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
+            
+            if isinstance(c_client, ChromaAdapter):
+                records = c_client.list_records(limit=100)
+                if not records:
+                    st.info(f"No records found in collection '{insp_collection}'.")
+                else:
+                    st.success(f"Found {len(records)} records.")
+                    # Convert to DataFrame for display
+                    data = []
+                    for r in records:
+                        # Flatten metadata for easier reading
+                        row = {"ID": r.id}
+                        # Safely get content/source
+                        if r.metadata:
+                            row.update(r.metadata)
+                        # Add vector summary (e.g. norm or prefix)
+                        # row["Vector Norm"] = f"{np.linalg.norm(r.vector):.2f}"
+                        data.append(row)
+                    
+                    st.dataframe(data, use_container_width=True)
+            else:
+                st.warning("Inspector only supports Chroma collections currently.")
+
+        except Exception as e:
+            st.error(f"Error loading collection: {e}")
 
 with demo_tab:
     query = st.text_input(
@@ -118,7 +164,6 @@ with demo_tab:
         help="What you would search for. The app embeds this text and runs the retrieval.",
     )
 
-    chroma_collection_name: str | None = None
     if connector == "Chroma":
         chroma_collection_name = st.text_input(
             "Chroma Collection Name",
@@ -128,8 +173,7 @@ with demo_tab:
         )
         chroma_collection_name = (chroma_collection_name or "default").strip()
 
-    # Inline Chroma ingestion helper so users can paste raw text into the current collection.
-    # Inline Chroma ingestion helper so users can paste raw text into the current collection.
+    # Inline Chroma ingestion helper
     if connector == "Chroma":
         st.subheader("Chroma: store pasted text")
         st.caption("Paste any document text to embed and store it in the selected Chroma collection.")
@@ -160,7 +204,6 @@ with demo_tab:
                 
                 chroma_client.add_text(doc_id=final_doc_id, text=text.strip(), metadata=metadata)
                 
-                # Success: clear inputs
                 st.session_state["chroma_ingest_text"] = ""
                 st.session_state["chroma_ingest_doc_id"] = f"doc-{uuid.uuid4().hex[:8]}"
                 st.session_state["ingest_message"] = ("success", f"Stored '{final_doc_id}' in Chroma collection '{chroma_collection_name}'.")
@@ -198,12 +241,8 @@ with demo_tab:
                 st.success(msg)
             else:
                 st.error(msg)
-            # Clear message after showing so it doesn't persist forever? 
-            # Actually, keeping it is fine until next action.
             del st.session_state["ingest_message"]
 
-    # Keep latest run results so widget changes (like the ruler target) can update the plot
-    # without re-clicking the Run button.
     if "viz_df" not in st.session_state:
         st.session_state["viz_df"] = None
     if "viz_warning" not in st.session_state:
@@ -226,7 +265,7 @@ with demo_tab:
 
             st.session_state["viz_df"] = df
             st.session_state["viz_warning"] = warning
-        except Exception as exc:  # pragma: no cover - surfaces in UI
+        except Exception as exc:
             st.error(f"Error: {exc}")
 
     df = st.session_state.get("viz_df")
@@ -241,7 +280,6 @@ with demo_tab:
             help="Draw an orange line from the query point to a chosen result to see relative distance.",
         )
         figure = build_scatter(df, ruler_target_id=None if ruler_target == "None" else ruler_target)
-
         st.plotly_chart(figure, use_container_width=True)
 
         st.subheader("Ranking")
@@ -250,12 +288,10 @@ with demo_tab:
         if "cosine_sim_to_query" in results_df.columns:
             results_df = results_df.sort_values("cosine_sim_to_query", ascending=False)
         
-        # Prepare for display
         display_df = results_df.copy()
         display_df["content_snippet"] = display_df["metadata"].apply(lambda x: str(x.get("content", ""))[:100] + "..." if x.get("content") else str(x))
         
         cols_to_show = ["id", "cosine_sim_to_query", "score", "content_snippet"]
-        # Only show available columns
         cols_to_show = [c for c in cols_to_show if c in display_df.columns]
         
         st.dataframe(

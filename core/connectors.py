@@ -50,6 +50,10 @@ class VectorDBClient(abc.ABC):
     def random_sample(self, k: int = 500, exclude_ids: Optional[Set[str]] = None) -> List[VectorRecord]:
         """Return approximately random records for background context."""
 
+    def list_records(self, limit: int = 100) -> List[VectorRecord]:
+        """Optional: List records for inspection. Default implementation returns empty."""
+        return []
+
     def retrieve_with_background(
         self, query: str, top_k: int = 10, background_k: int = 500
     ) -> QueryWithContext:
@@ -239,6 +243,44 @@ class ChromaAdapter(VectorDBClient):
                     id=doc_id,
                     vector=vector,
                     metadata=results["metadatas"][idx] or {},
+                    score=None,
+                )
+            )
+        return records
+
+    def list_records(self, limit: int = 100) -> List[VectorRecord]:
+        """Fetch the first N records from the collection."""
+        count = self.collection.count()
+        if count == 0:
+            return []
+        
+        # Helper to safely retrieve without errors if limit > count
+        results = self.collection.get(
+            ids=None,
+            where=None,
+            limit=limit,
+            include=["embeddings", "metadatas"],
+        )
+        
+        records: List[VectorRecord] = []
+        # 'embeddings' might be None if none requested, but we requested them.
+        # Chroma .get return format: dict with keys ids, embeddings, metadatas, etc.
+        # Ensure we handle the case where embeddings are returned.
+        embeddings = results.get("embeddings")
+        ids = results.get("ids")
+        metadatas = results.get("metadatas")
+        
+        if not ids:
+            return []
+
+        for idx, doc_id in enumerate(ids):
+            embedding = embeddings[idx] if embeddings else []
+            meta = metadatas[idx] if metadatas else {}
+            records.append(
+                VectorRecord(
+                    id=str(doc_id),
+                    vector=embedding,
+                    metadata=meta or {},
                     score=None,
                 )
             )
