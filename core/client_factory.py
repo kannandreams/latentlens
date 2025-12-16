@@ -12,9 +12,30 @@ from core.connectors import ChromaAdapter, QueryWithContext, VectorDBClient, Vec
 
 
 def demo_embedder(text: str) -> list[float]:
-    """Stable pseudo-embedding for demo purposes."""
-    rng = random.Random(hash(text) % (2**32))
-    return [rng.random() for _ in range(64)]
+    """Stable pseudo-embedding using bag-of-words hash projection."""
+    # 1. Tokenize (simple whitespace)
+    tokens = text.lower().split()
+    if not tokens:
+        # Return a consistent random vector for empty string or purely whitespace
+        rng = random.Random(0)
+        return [rng.random() for _ in range(64)]
+
+    # 2. Sum vectors for each token
+    dim = 64
+    embedding = np.zeros(dim)
+    for token in tokens:
+        # Seed random with token hash
+        rng = random.Random(hash(token) % (2**32))
+        # Generate random vector [-1, 1] for better orthogonality than [0, 1]
+        token_vec = np.array([rng.uniform(-1, 1) for _ in range(dim)])
+        embedding += token_vec
+
+    # 3. Normalize
+    norm = np.linalg.norm(embedding)
+    if norm > 0:
+        embedding /= norm
+    
+    return embedding.tolist()
 
 
 @st.cache_resource(show_spinner=False)

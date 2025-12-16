@@ -129,42 +129,78 @@ with demo_tab:
         chroma_collection_name = (chroma_collection_name or "default").strip()
 
     # Inline Chroma ingestion helper so users can paste raw text into the current collection.
+    # Inline Chroma ingestion helper so users can paste raw text into the current collection.
     if connector == "Chroma":
         st.subheader("Chroma: store pasted text")
         st.caption("Paste any document text to embed and store it in the selected Chroma collection.")
+
+        def ingest_document(embedder_choice, chroma_collection_name):
+            text = st.session_state.get("chroma_ingest_text", "")
+            doc_id = st.session_state.get("chroma_ingest_doc_id", "")
+            source = st.session_state.get("chroma_ingest_source", "")
+            
+            if not text.strip():
+                st.session_state["ingest_message"] = ("error", "Please paste document text before storing it.")
+                return
+
+            if embedder_choice == "OpenAI" and not has_openai_key():
+                 st.session_state["ingest_message"] = ("error", "Set `OPENAI_API_KEY` before using the OpenAI embedder.")
+                 return
+
+            try:
+                embedder = get_embedder(embedder_choice)
+                chroma_client, _ = build_client("Chroma", embedder, chroma_collection_name)
+                if not isinstance(chroma_client, ChromaAdapter):
+                    raise ValueError("Failed to initialize Chroma client.")
+                
+                final_doc_id = doc_id.strip() or f"doc-{uuid.uuid4().hex[:8]}"
+                metadata = {"content": text.strip()}
+                if source.strip():
+                    metadata["source"] = source.strip()
+                
+                chroma_client.add_text(doc_id=final_doc_id, text=text.strip(), metadata=metadata)
+                
+                # Success: clear inputs
+                st.session_state["chroma_ingest_text"] = ""
+                st.session_state["chroma_ingest_doc_id"] = f"doc-{uuid.uuid4().hex[:8]}"
+                st.session_state["ingest_message"] = ("success", f"Stored '{final_doc_id}' in Chroma collection '{chroma_collection_name}'.")
+            except Exception as exc:
+                st.session_state["ingest_message"] = ("error", f"Error storing document: {exc}")
+
         with st.form("chroma_ingest_form"):
-            pasted_text = st.text_area("Document text", placeholder="Copy/paste text to embed", height=160)
-            doc_id_input = st.text_input(
+            st.text_area(
+                "Document text", 
+                placeholder="Copy/paste text to embed", 
+                height=160,
+                key="chroma_ingest_text"
+            )
+            st.text_input(
                 "Document ID (optional)",
                 value=f"doc-{uuid.uuid4().hex[:8]}",
                 help="Provide an ID or leave the default to avoid collisions.",
+                key="chroma_ingest_doc_id"
             )
-            source_label = st.text_input(
+            st.text_input(
                 "Source label (optional)",
                 value="clipboard",
                 help="Optional tag to remember where this text came from.",
+                key="chroma_ingest_source"
             )
-            store_button = st.form_submit_button("Embed and store in Chroma")
+            st.form_submit_button(
+                "Embed and store in Chroma",
+                on_click=ingest_document,
+                args=(embedder_choice, chroma_collection_name)
+            )
 
-        if store_button:
-            if not pasted_text.strip():
-                st.error("Please paste document text before storing it.")
-            elif embedder_choice == "OpenAI" and openai_key_missing:
-                st.error("Set `OPENAI_API_KEY` (env var or `st.secrets`) before using the OpenAI embedder.")
+        if "ingest_message" in st.session_state:
+            kind, msg = st.session_state["ingest_message"]
+            if kind == "success":
+                st.success(msg)
             else:
-                try:
-                    embedder = get_embedder(embedder_choice)
-                    chroma_client, _ = build_client("Chroma", embedder, chroma_collection_name)
-                    if not isinstance(chroma_client, ChromaAdapter):
-                        raise ValueError("Failed to initialize Chroma client.")
-                    doc_id = doc_id_input.strip() or f"doc-{uuid.uuid4().hex[:8]}"
-                    metadata = {"content": pasted_text.strip()}
-                    if source_label.strip():
-                        metadata["source"] = source_label.strip()
-                    chroma_client.add_text(doc_id=doc_id, text=pasted_text.strip(), metadata=metadata)
-                    st.success(f"Stored '{doc_id}' in Chroma collection '{chroma_collection_name}'.")
-                except Exception as exc:  # pragma: no cover - surfaces in UI
-                    st.error(f"Error storing document: {exc}")
+                st.error(msg)
+            # Clear message after showing so it doesn't persist forever? 
+            # Actually, keeping it is fine until next action.
+            del st.session_state["ingest_message"]
 
     # Keep latest run results so widget changes (like the ruler target) can update the plot
     # without re-clicking the Run button.
@@ -207,6 +243,30 @@ with demo_tab:
         figure = build_scatter(df, ruler_target_id=None if ruler_target == "None" else ruler_target)
 
         st.plotly_chart(figure, use_container_width=True)
+
+        st.subheader("Ranking")
+        # Filter for results only and sort by similarity
+        results_df = df[df["label"] == "result"].copy()
+        if "cosine_sim_to_query" in results_df.columns:
+            results_df = results_df.sort_values("cosine_sim_to_query", ascending=False)
+        
+        # Prepare for display
+        display_df = results_df.copy()
+        display_df["content_snippet"] = display_df["metadata"].apply(lambda x: str(x.get("content", ""))[:100] + "..." if x.get("content") else str(x))
+        
+        cols_to_show = ["id", "cosine_sim_to_query", "score", "content_snippet"]
+        # Only show available columns
+        cols_to_show = [c for c in cols_to_show if c in display_df.columns]
+        
+        st.dataframe(
+            display_df[cols_to_show].rename(columns={
+                "id": "ID",
+                "cosine_sim_to_query": "Similarity",
+                "score": "Distance/Score", 
+                "content_snippet": "Content"
+            }),
+            use_container_width=True
+        )
 
         selected_id = st.selectbox(
             "Inspect metadata for ID",
