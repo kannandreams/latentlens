@@ -313,18 +313,16 @@ with demo_tab:
         if warning:
             st.warning(warning)
 
-with docs_tab:
-    st.subheader("Documentation")
-    with st.expander("How to use Latent Lens", expanded=False):
-        render_help_panel()
+    with docs_tab:
+        st.subheader("Documentation & Concepts")
+        
+        with st.expander("How to use Latent Lens", expanded=True):
+            render_help_panel()
 
-    with st.expander("Glossary", expanded=False):
-        st.markdown(
-            """
-- **Connector**: Backend that holds your vectors (Demo = synthetic, Chroma = local DB).
-- **Embedder**: Model used to turn text into vectors (MiniLM local, OpenAI remote).
-- **Top K results**: Number of nearest neighbors returned from the vector DB.
-- **Background samples**: Random vectors for context, shown as gray points.
-- **Void warning**: Indicator that the query sits far from retrieved results (possible mismatch).
-            """
-        )
+        try:
+            with open("docs/concepts.md", "r") as f:
+                concepts_md = f.read()
+            st.markdown(concepts_md)
+        except FileNotFoundError:
+            st.error("Documentation file `docs/concepts.md` not found.")
+
