@@ -110,26 +110,96 @@ with st.sidebar:
     )
 
 chroma_collection_name = None
-demo_tab, docs_tab, inspector_tab = st.tabs(["Demo", "Documentation", "Collection Inspector"])
+demo_tab, docs_tab, inspector_tab = st.tabs(["Demo", "Documentation", "Manage Collection"])
 
 with inspector_tab:
-    st.subheader("Collection Inspector")
-    st.caption("View raw records stored in the current Chroma collection (in-memory).")
+    st.subheader("Manage Collection")
     
     col1, col2 = st.columns([3, 1])
     with col1:
-            insp_collection = st.text_input("Collection Name", value=chroma_collection_name or "default", key="insp_col_name")
+            insp_collection = st.text_input("Collection Name", value="default", key="insp_col_name")
     with col2:
-            # Add a bit of spacing to align with input
             st.write("") 
             st.write("")
             load_btn = st.button("Load Records", key="insp_load_btn")
 
+    # --- Ingestion Form (Moved here) ---
+    st.divider()
+    st.subheader("Add Document")
+    st.caption("Paste text to embed and store in the collection defined above.")
+
+    def ingest_document(embedder_choice, collection_name):
+        text = st.session_state.get("chroma_ingest_text", "")
+        doc_id = st.session_state.get("chroma_ingest_doc_id", "")
+        source = st.session_state.get("chroma_ingest_source", "")
+        
+        if not text.strip():
+            st.session_state["ingest_message"] = ("error", "Please paste document text before storing it.")
+            return
+
+        if embedder_choice == "OpenAI" and not has_openai_key():
+                st.session_state["ingest_message"] = ("error", "Set `OPENAI_API_KEY` before using the OpenAI embedder.")
+                return
+
+        try:
+            embedder = get_embedder(embedder_choice)
+            chroma_client, _ = build_client("Chroma", embedder, collection_name)
+            if not isinstance(chroma_client, ChromaAdapter):
+                raise ValueError("Failed to initialize Chroma client.")
+            
+            final_doc_id = doc_id.strip() or f"doc-{uuid.uuid4().hex[:8]}"
+            metadata = {"content": text.strip()}
+            if source.strip():
+                metadata["source"] = source.strip()
+            
+            chroma_client.add_text(doc_id=final_doc_id, text=text.strip(), metadata=metadata)
+            
+            st.session_state["chroma_ingest_text"] = ""
+            st.session_state["chroma_ingest_doc_id"] = f"doc-{uuid.uuid4().hex[:8]}"
+            st.session_state["ingest_message"] = ("success", f"Stored '{final_doc_id}' in Chroma collection '{collection_name}'.")
+        except Exception as exc:
+            st.session_state["ingest_message"] = ("error", f"Error storing document: {exc}")
+
+    with st.form("chroma_ingest_form"):
+        st.text_area(
+            "Document text", 
+            placeholder="Copy/paste text to embed", 
+            height=160,
+            key="chroma_ingest_text"
+        )
+        col_id, col_src = st.columns(2)
+        with col_id:
+            st.text_input(
+                "Document ID (optional)",
+                value=f"doc-{uuid.uuid4().hex[:8]}",
+                help="Provide an ID or leave the default to avoid collisions.",
+                key="chroma_ingest_doc_id"
+            )
+        with col_src:
+            st.text_input(
+                "Source label (optional)",
+                value="clipboard",
+                key="chroma_ingest_source"
+            )
+        st.form_submit_button(
+            "Embed and store",
+            on_click=ingest_document,
+            args=(embedder_choice, insp_collection)
+        )
+
+    if "ingest_message" in st.session_state:
+        kind, msg = st.session_state["ingest_message"]
+        if kind == "success":
+            st.success(msg)
+        else:
+            st.error(msg)
+        del st.session_state["ingest_message"]
+
+    st.divider()
+
     if load_btn:
         try:
-            # Re-use embedder choice from sidebar
             embedder_ref = get_embedder(embedder_choice)
-            # Build client just to access the collection
             c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
             
             if isinstance(c_client, ChromaAdapter):
@@ -138,16 +208,11 @@ with inspector_tab:
                     st.info(f"No records found in collection '{insp_collection}'.")
                 else:
                     st.success(f"Found {len(records)} records.")
-                    # Convert to DataFrame for display
                     data = []
                     for r in records:
-                        # Flatten metadata for easier reading
                         row = {"ID": r.id}
-                        # Safely get content/source
                         if r.metadata:
                             row.update(r.metadata)
-                        # Add vector summary (e.g. norm or prefix)
-                        # row["Vector Norm"] = f"{np.linalg.norm(r.vector):.2f}"
                         data.append(row)
                     
                     st.dataframe(data, use_container_width=True)
@@ -165,83 +230,9 @@ with demo_tab:
     )
 
     if connector == "Chroma":
-        chroma_collection_name = st.text_input(
-            "Chroma Collection Name",
-            value=st.session_state.get("chroma_collection_name", "default"),
-            help="Name of the Chroma collection to read from and write to.",
-            key="chroma_collection_name",
-        )
-        chroma_collection_name = (chroma_collection_name or "default").strip()
-
-    # Inline Chroma ingestion helper
-    if connector == "Chroma":
-        st.subheader("Chroma: store pasted text")
-        st.caption("Paste any document text to embed and store it in the selected Chroma collection.")
-
-        def ingest_document(embedder_choice, chroma_collection_name):
-            text = st.session_state.get("chroma_ingest_text", "")
-            doc_id = st.session_state.get("chroma_ingest_doc_id", "")
-            source = st.session_state.get("chroma_ingest_source", "")
-            
-            if not text.strip():
-                st.session_state["ingest_message"] = ("error", "Please paste document text before storing it.")
-                return
-
-            if embedder_choice == "OpenAI" and not has_openai_key():
-                 st.session_state["ingest_message"] = ("error", "Set `OPENAI_API_KEY` before using the OpenAI embedder.")
-                 return
-
-            try:
-                embedder = get_embedder(embedder_choice)
-                chroma_client, _ = build_client("Chroma", embedder, chroma_collection_name)
-                if not isinstance(chroma_client, ChromaAdapter):
-                    raise ValueError("Failed to initialize Chroma client.")
-                
-                final_doc_id = doc_id.strip() or f"doc-{uuid.uuid4().hex[:8]}"
-                metadata = {"content": text.strip()}
-                if source.strip():
-                    metadata["source"] = source.strip()
-                
-                chroma_client.add_text(doc_id=final_doc_id, text=text.strip(), metadata=metadata)
-                
-                st.session_state["chroma_ingest_text"] = ""
-                st.session_state["chroma_ingest_doc_id"] = f"doc-{uuid.uuid4().hex[:8]}"
-                st.session_state["ingest_message"] = ("success", f"Stored '{final_doc_id}' in Chroma collection '{chroma_collection_name}'.")
-            except Exception as exc:
-                st.session_state["ingest_message"] = ("error", f"Error storing document: {exc}")
-
-        with st.form("chroma_ingest_form"):
-            st.text_area(
-                "Document text", 
-                placeholder="Copy/paste text to embed", 
-                height=160,
-                key="chroma_ingest_text"
-            )
-            st.text_input(
-                "Document ID (optional)",
-                value=f"doc-{uuid.uuid4().hex[:8]}",
-                help="Provide an ID or leave the default to avoid collisions.",
-                key="chroma_ingest_doc_id"
-            )
-            st.text_input(
-                "Source label (optional)",
-                value="clipboard",
-                help="Optional tag to remember where this text came from.",
-                key="chroma_ingest_source"
-            )
-            st.form_submit_button(
-                "Embed and store in Chroma",
-                on_click=ingest_document,
-                args=(embedder_choice, chroma_collection_name)
-            )
-
-        if "ingest_message" in st.session_state:
-            kind, msg = st.session_state["ingest_message"]
-            if kind == "success":
-                st.success(msg)
-            else:
-                st.error(msg)
-            del st.session_state["ingest_message"]
+        # Use the collection name from the inspector tab for retrieval
+        # If the inspector tab hasn't been interacted with, it defaults to "default"
+        chroma_collection_name = st.session_state.get("insp_col_name", "default").strip()
 
     if "viz_df" not in st.session_state:
         st.session_state["viz_df"] = None

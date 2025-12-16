@@ -270,12 +270,12 @@ class ChromaAdapter(VectorDBClient):
         ids = results.get("ids")
         metadatas = results.get("metadatas")
         
-        if not ids:
+        if ids is None or len(ids) == 0:
             return []
 
         for idx, doc_id in enumerate(ids):
-            embedding = embeddings[idx] if embeddings else []
-            meta = metadatas[idx] if metadatas else {}
+            embedding = embeddings[idx] if embeddings is not None else []
+            meta = metadatas[idx] if metadatas is not None else {}
             records.append(
                 VectorRecord(
                     id=str(doc_id),
