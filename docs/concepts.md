@@ -85,6 +85,21 @@ For a deeper dive into vector search and similarity, check out these resources:
 - [Vector Similarity Explained (Pinecone)](https://www.pinecone.io/learn/vector-similarity/)
 
 ---
+ 
+ ## 5. Troubleshooting & Warnings
+
+ ### "Query appears isolated"
+ This warning appears when the **maximum cosine similarity** between your query and the best result is very low (less than 0.15). 
+ 
+ **What it means:**
+ - **Demo Embedder**: Your query shares **zero words** with the documents. The matching score is essentially random noise (e.g., 0.04).
+ - **Semantic Embedders (MiniLM/OpenAI)**: Your query is topically unrelated to the dataset (e.g., searching for "cooking recipes" in a "legal contracts" database).
+ 
+ **How to fix:**
+ - **Demo**: Use words that actually exist in the text.
+ - **Semantic**: Ensure your query is relevant to the collection's domain.
+
+ ---
 
 ## Glossary
 - **Connector**: Backend that holds your vectors (Demo = synthetic, Chroma = local DB).
