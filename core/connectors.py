@@ -211,15 +211,20 @@ class ChromaAdapter(VectorDBClient):
             query_embeddings=[query_vector],
             n_results=top_k,
             # Chroma always returns IDs; only request supported fields.
-            include=["embeddings", "metadatas", "distances"],
+            include=["embeddings", "metadatas", "distances", "documents"],
         )
         records = []
         for idx, vector in enumerate(results["embeddings"][0]):
+            meta = results["metadatas"][0][idx] or {}
+            doc_text = results["documents"][0][idx]
+            if doc_text and "content" not in meta:
+                meta["content"] = doc_text
+
             records.append(
                 VectorRecord(
                     id=str(results["ids"][0][idx]),
                     vector=vector,
-                    metadata=results["metadatas"][0][idx] or {},
+                    metadata=meta,
                     score=results["distances"][0][idx],
                 )
             )
@@ -236,18 +241,24 @@ class ChromaAdapter(VectorDBClient):
             where=None,
             limit=limit,
             offset=offset,
-            include=["embeddings", "metadatas"],
+            include=["embeddings", "metadatas", "documents"],
         )
         records: List[VectorRecord] = []
         for idx, vector in enumerate(results["embeddings"]):
             doc_id = str(results["ids"][idx])
             if exclude_ids and doc_id in exclude_ids:
                 continue
+            
+            meta = results["metadatas"][idx] or {}
+            doc_text = results["documents"][idx]
+            if doc_text and "content" not in meta:
+                meta["content"] = doc_text
+
             records.append(
                 VectorRecord(
                     id=doc_id,
                     vector=vector,
-                    metadata=results["metadatas"][idx] or {},
+                    metadata=meta,
                     score=None,
                 )
             )
@@ -264,7 +275,7 @@ class ChromaAdapter(VectorDBClient):
             ids=None,
             where=None,
             limit=limit,
-            include=["embeddings", "metadatas"],
+            include=["embeddings", "metadatas", "documents"],
         )
         
         records: List[VectorRecord] = []
@@ -274,6 +285,7 @@ class ChromaAdapter(VectorDBClient):
         embeddings = results.get("embeddings")
         ids = results.get("ids")
         metadatas = results.get("metadatas")
+        documents = results.get("documents")
         
         if ids is None or len(ids) == 0:
             return []
@@ -281,6 +293,11 @@ class ChromaAdapter(VectorDBClient):
         for idx, doc_id in enumerate(ids):
             embedding = embeddings[idx] if embeddings is not None else []
             meta = metadatas[idx] if metadatas is not None else {}
+            doc_text = documents[idx] if documents is not None else ""
+            
+            if doc_text and "content" not in meta:
+                meta["content"] = doc_text
+
             records.append(
                 VectorRecord(
                     id=str(doc_id),
