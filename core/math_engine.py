@@ -39,16 +39,23 @@ def _prepare_matrix(records: Iterable[VectorRecord]) -> np.ndarray:
 
 def reduce_query_context(
     ctx: QueryWithContext,
+    history: List[VectorRecord] = [],
     pca_components: int = 50,
     umap_components: int = 3,
     random_state: int = 42,
 ) -> pd.DataFrame:
     """Reduce query, results, and background vectors down to 3D space."""
-    # Order matters: first entry is always the query vector.
+    # Order matters: first entry is always the current query vector.
     labels: List[str] = ["query"]
     base_records: List[VectorRecord] = [
         VectorRecord(id="__query__", vector=ctx.query_vector, metadata={"query": ctx.query})
     ]
+    
+    # Insert history right after query
+    if history:
+        base_records.extend(history)
+        labels.extend(["history"] * len(history))
+
     base_records.extend(ctx.results)
     labels.extend(["result"] * len(ctx.results))
     base_records.extend(ctx.background)
