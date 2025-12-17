@@ -109,10 +109,13 @@ with st.sidebar:
             <div class="cta-box">
                 If you like this project, give a star to the <a href="{APP_REPO}" target="_blank">repo</a>! ⭐️
             </div>
-            <div style="font-weight: 700;">About</div>
-            <div>Latent Lens is a work in progress. Share feedback or contribute on <a href="{APP_REPO}" target="_blank">GitHub</a>.</div>
             <div style="margin-top: 0.5rem;">
-                Made by <a href="{APP_WEBSITE}" target="_blank" rel="noopener noreferrer">{APP_AUTHOR}</a>
+                Built by <a href="{APP_WEBSITE}" target="_blank" rel="noopener noreferrer">{APP_AUTHOR}</a>
+                <div style="margin-top: 10px;">
+                    <a href="https://www.buymeacoffee.com/kannandreams" target="_blank">
+                        <img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=kannandreams&button_colour=FFDD00&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=ffffff" alt="Buy Me A Coffee" />
+                    </a>
+                </div>
             </div>
         </div>
         """,
