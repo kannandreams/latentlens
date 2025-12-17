@@ -12,12 +12,14 @@ COLOR_MAP = {
     "background": "#b0b0b0",
     "result": "#1f77b4",
     "query": "#d62728",
+    "history": "#fbafe4",
 }
 
 SYMBOL_MAP = {
     "background": "circle",
     "result": "circle",
     "query": "diamond",
+    "history": "circle",
 }
 
 
@@ -36,20 +38,40 @@ def build_scatter(df: pd.DataFrame, ruler_target_id: Optional[str] = None) -> go
         custom_data=["id"],
     )
 
-    # Enlarge query marker.
-    query_idx = df["label"] == "query"
-    if query_idx.any():
-        fig.update_traces(
-            selector=lambda trace: trace.name == "query",
-            marker=dict(size=10),
-        )
-
-    # Reduce opacity of background points.
+    # Style traces.
+    fig.update_traces(
+        selector=lambda trace: trace.name == "query",
+        marker=dict(size=10),
+    )
     fig.update_traces(
         selector=lambda trace: trace.name == "background",
         opacity=0.3,
         marker=dict(size=4),
     )
+    fig.update_traces(
+        selector=lambda trace: trace.name == "history",
+        opacity=0.6,
+        marker=dict(size=6),
+    )
+
+    # Add trajectory line.
+    history_df = df[df["label"] == "history"]
+    query_point = df[df["label"] == "query"]
+    if not history_df.empty and not query_point.empty:
+        path_x = history_df["x"].tolist() + [query_point["x"].iloc[0]]
+        path_y = history_df["y"].tolist() + [query_point["y"].iloc[0]]
+        path_z = history_df["z"].tolist() + [query_point["z"].iloc[0]]
+        fig.add_trace(
+            go.Scatter3d(
+                x=path_x,
+                y=path_y,
+                z=path_z,
+                mode="lines",
+                line=dict(color="#d62728", width=3, dash="dot"),
+                name="trajectory",
+                hoverinfo="skip",
+            )
+        )
 
     # Optional distance ruler.
     if ruler_target_id:

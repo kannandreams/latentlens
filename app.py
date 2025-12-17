@@ -66,7 +66,17 @@ with st.sidebar:
     run_button = st.button(
         "Run Latent Lens",
         help="Execute the retrieval + visualization with the current settings.",
+        type="primary",
+        use_container_width=True
     )
+    
+    if "query_history" not in st.session_state:
+        st.session_state["query_history"] = []
+
+    if st.button("Clear Explorer History", help="Reset the 'ghost' path of previous searches in the Explorer tab.", use_container_width=True):
+        st.session_state["query_history"] = []
+        st.rerun()
+
     openai_key_missing = embedder_choice == "OpenAI" and not has_openai_key()
     if openai_key_missing:
         st.warning(
@@ -123,7 +133,7 @@ with st.sidebar:
     )
 
 chroma_collection_name = None
-demo_tab, docs_tab, inspector_tab = st.tabs(["Demo", "Documentation", "Manage Collection"])
+demo_tab, trajectory_tab, docs_tab, inspector_tab = st.tabs(["Explorer", "Query Trajectory", "Documentation", "Manage Collection"])
 
 with inspector_tab:
     st.subheader("Manage Collection")
@@ -296,6 +306,87 @@ with inspector_tab:
         except Exception as e:
             st.error(f"Error loading collection: {e}")
 
+with trajectory_tab:
+    st.subheader("Query Trajectory")
+    st.caption("How your query's meaning 'flies' through space as you add or change words.")
+
+    with st.expander("📖 How to use this feature"):
+        st.markdown("""
+        **Query Trajectory** visualizes how adding specific words shifts the mathematical 'meaning' of your search.
+        
+        **Steps to try it:**
+        1.  **Start Simple**: Type `Bank` and click **Add to Trajectory**. A red point appears.
+        2.  **Add Context**: Type `Bank of the river` and click again.
+        3.  **Watch the shift**: A dotted line will draw the 'flight' from the Finance cluster to the Nature cluster.
+        4.  **Explore**: Try adding `River bank` or `Bank account` to see diverging paths!
+        
+        *Note: Past steps are shown as pink circles, the current step is a red diamond.*
+        """)
+    
+    traj_query = st.text_input(
+        "Add a step to the trajectory",
+        placeholder="e.g. 'Bank', 'Bank of the river', 'Riverside bank'...",
+        key="traj_input"
+    )
+    
+    col_t1, col_t2 = st.columns([1, 4])
+    with col_t1:
+        add_traj = st.button("Add to Trajectory", type="primary", use_container_width=True)
+    with col_t2:
+        if st.checkbox("Show background context?", value=True, help="Include random background points for spatial reference."):
+             traj_bg_k = background_k
+        else:
+             traj_bg_k = 0
+
+    if add_traj and traj_query.strip():
+        try:
+            embedder = get_embedder(embedder_choice)
+            client, _ = build_client(connector, embedder, st.session_state.get("insp_col_name", "default").strip())
+            
+            # 1. Embed current step
+            vec = embedder(traj_query.strip())
+            
+            # 2. Add to dedicated traj history
+            if "traj_history" not in st.session_state:
+                st.session_state["traj_history"] = []
+            
+            st.session_state["traj_history"].append({"query": traj_query.strip(), "vector": vec})
+            
+            # 3. Retrieve context for the latest step (optional, but requested "The Wow Moment")
+            ctx = client.retrieve_with_background(query=traj_query.strip(), top_k=top_k, background_k=traj_bg_k)
+            
+            # 4. Reduce WITH all traj steps as 'history'
+            from core.connectors import VectorRecord, QueryWithContext
+            traj_records = []
+            # All but the last one are history
+            for h in st.session_state["traj_history"][:-1]:
+                 traj_records.append(
+                     VectorRecord(id=f"traj-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
+                 )
+            
+            df_traj = reduce_query_context(ctx, history=traj_records)
+            st.session_state["traj_df"] = df_traj
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Trajectory error: {e}")
+
+    # Display Trajectory
+    if st.session_state.get("traj_history"):
+        st.write("**Current Path:** " + " ➔ ".join([f"`{h['query']}`" for h in st.session_state["traj_history"]]))
+        
+        df_t = st.session_state.get("traj_df")
+        if df_t is not None:
+             fig_t = build_scatter(df_t)
+             st.plotly_chart(fig_t, use_container_width=True)
+        
+        if st.button("Reset Trajectory", help="Clear the current multi-step path and start fresh."):
+            st.session_state["traj_history"] = []
+            st.session_state["traj_df"] = None
+            st.rerun()
+    else:
+        st.info("Type a word above (e.g. 'Bank') and click 'Add to Trajectory' to start your path.")
+
 with demo_tab:
     query = st.text_input(
         "Query text",
@@ -322,8 +413,21 @@ with demo_tab:
             with st.spinner(f"Querying {name}..."):
                 ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
 
+            from core.connectors import VectorRecord
+            
+            # Prepare history (last 5 previous queries)
+            history_records = []
+            for h in st.session_state["query_history"][-5:]:
+                 history_records.append(
+                     VectorRecord(id=f"history-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
+                 )
 
-            df = reduce_query_context(ctx)
+            df = reduce_query_context(ctx, history=history_records)
+            
+            # Save current for next run
+            current_entry = {"query": query, "vector": ctx.query_vector}
+            if not st.session_state["query_history"] or st.session_state["query_history"][-1]["query"] != query:
+                st.session_state["query_history"].append(current_entry)
             warning = detect_void_warning(df)
 
             st.session_state["viz_df"] = df
@@ -366,6 +470,15 @@ with demo_tab:
             }),
             use_container_width=True
         )
+
+        if st.session_state.get("query_history"):
+            with st.expander("Query History & Trajectory Log"):
+                st.caption("Chronological path of your search 'thoughts'. Past queries are shown as diamonds/dots in the plot.")
+                history_data = [
+                    {"#": i+1, "Query": h["query"]} 
+                    for i, h in enumerate(st.session_state["query_history"])
+                ]
+                st.table(history_data)
 
         selected_id = st.selectbox(
             "Inspect metadata for ID",
