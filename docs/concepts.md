@@ -52,6 +52,28 @@ Vectors often have hundreds of dimensions (e.g., 384 for MiniLM, 1536 for OpenAI
 - **Role**: It tries to preserve the "local neighborhood". If two points are close in high-dimensional space, UMAP tries very hard to keep them close in 3D.
 - **Why**: It is excellent for showing clusters and groupings that linear PCA might miss.
 
+
+---
+
+## 4. Experimenting with Datasets
+
+Preset "Challenge Datasets" are included in the **Manage Collection** tab to help demonstrate the difference between embedders.
+
+### A. Synonyms (Semantic vs Literal)
+- **Dataset**: Sentences like "The generated visuals were stunning" and "The created graphics were beautiful."
+- **Demo (Bag-of-Words)**: Will likely see these as unrelated because they share almost no words ("The", "were").
+- **MiniLM**: Will rank them together because it understands "visuals" ≈ "graphics" and "stunning" ≈ "beautiful".
+
+### B. Negation (Sentiment)
+- **Dataset**: "I love this" vs "I do not love this".
+- **Demo**: Finds them very similar because they share 4 out of 5 words.
+- **MiniLM**: Can discern the conflict in meaning, pushing them further apart (though they are still topically related).
+
+### C. Polysemy (Context)
+- **Dataset**: "Crane" (bird) vs "Crane" (machine).
+- **Demo**: Confuses them entirely; a "crane" is a "crane".
+- **MiniLM**: Uses the surrounding context ("lifted heavy beam" vs "waded in water") to disambiguate the vector.
+
 ---
 
 ## Further Reading

@@ -11,8 +11,10 @@ import streamlit as st
 from core.connectors import ChromaAdapter, QueryWithContext, VectorDBClient, VectorRecord
 
 
+import hashlib
+
 def demo_embedder(text: str) -> list[float]:
-    """Stable pseudo-embedding using bag-of-words hash projection."""
+    """Stable pseudo-embedding using bag-of-words hash projection (MD5)."""
     # 1. Tokenize (simple whitespace)
     tokens = text.lower().split()
     if not tokens:
@@ -24,8 +26,12 @@ def demo_embedder(text: str) -> list[float]:
     dim = 64
     embedding = np.zeros(dim)
     for token in tokens:
-        # Seed random with token hash
-        rng = random.Random(hash(token) % (2**32))
+        # Use MD5 for stable hashing across runs
+        hash_digest = hashlib.md5(token.encode("utf-8")).digest()
+        # Use first 4 bytes as seed
+        seed_val = int.from_bytes(hash_digest[:4], "big")
+        
+        rng = random.Random(seed_val)
         # Generate random vector [-1, 1] for better orthogonality than [0, 1]
         token_vec = np.array([rng.uniform(-1, 1) for _ in range(dim)])
         embedding += token_vec
@@ -54,6 +60,13 @@ def local_minilm_embedder(model: str = "sentence-transformers/paraphrase-MiniLM-
         return vector.tolist()
 
     return _embed
+
+
+
+def has_openai_key() -> bool:
+    """Check if OPENAI_API_KEY is set in environment or secrets."""
+    key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    return bool(key)
 
 
 def openai_embedder(model: str = "text-embedding-3-small") -> Callable[[str], list[float]]:
@@ -108,35 +121,5 @@ def build_client(
     raise ValueError(f"Unsupported connector: {connector}")
 
 
-def generate_demo_context(query: str, top_k: int, background_k: int) -> QueryWithContext:
-    """Create synthetic vectors for local demo."""
-    dim = 64
-    query_vector = np.random.normal(size=dim).tolist()
-    results = []
-    for i in range(top_k):
-        vec = (np.array(query_vector) + np.random.normal(scale=0.2, size=dim)).tolist()
-        results.append(
-            VectorRecord(
-                id=f"demo_result_{i}",
-                vector=vec,
-                metadata={"content": f"Synthetic result {i}", "source": "demo"},
-                score=float(np.random.random()),
-            )
-        )
 
-    background = []
-    for i in range(background_k):
-        background.append(
-            VectorRecord(
-                id=f"bg_{i}",
-                vector=np.random.normal(size=dim).tolist(),
-                metadata={"content": f"Background vector {i}"},
-                score=None,
-            )
-        )
-    return QueryWithContext(
-        query=query,
-        query_vector=query_vector,
-        results=results,
-        background=background,
-    )
+

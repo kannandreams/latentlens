@@ -6,8 +6,9 @@ import uuid
 
 import streamlit as st
 
-from core.client_factory import build_client, generate_demo_context, get_embedder
+from core.client_factory import build_client, get_embedder, has_openai_key
 from core.connectors import ChromaAdapter
+from core.datasets import EXAMPLE_DATASETS
 from core.math_engine import detect_void_warning, reduce_query_context
 from utils.visuals import build_scatter
 
@@ -35,13 +36,10 @@ def render_help_panel() -> None:
 
 
 with st.sidebar:
-    st.header("Connector")
-    connector = st.selectbox(
-        "Database",
-        ["Demo", "Chroma"],
-        index=0,
-        help="Pick where to fetch vectors. Demo creates synthetic data locally.",
-    )
+    st.header("Configuration")
+    # Hardcoded to Chroma as it is the only supported backend now.
+    connector = "Chroma"
+
     top_k = st.slider(
         "Top K results",
         min_value=5,
@@ -140,7 +138,50 @@ with inspector_tab:
         except Exception as e:
              st.error(f"Error resetting collection: {e}")
 
-    # --- Ingestion Form (Moved here) ---
+
+    # --- Load Example Dataset ---
+    st.divider()
+    st.subheader("Load Example Dataset")
+    st.caption("Quickly populate the collection to test specific concepts.")
+    
+    col_ds, col_btn = st.columns([3, 1])
+    with col_ds:
+        selected_dataset = st.selectbox(
+            "Choose a dataset", 
+            options=list(EXAMPLE_DATASETS.keys()),
+            key="dataset_selector"
+        )
+    with col_btn:
+        st.write("")
+        st.write("")
+        load_ds_btn = st.button("Load Dataset", key="load_ds_btn")
+
+    if load_ds_btn:
+        try:
+             embedder_ref = get_embedder(embedder_choice)
+             c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
+             
+             if isinstance(c_client, ChromaAdapter):
+                 records = EXAMPLE_DATASETS[selected_dataset]
+                 count = 0
+                 for item in records:
+                     doc_id = f"ex-{uuid.uuid4().hex[:6]}"
+                     c_client.add_text(
+                         doc_id=doc_id, 
+                         text=item["content"], 
+                         metadata=item.get("metadata")
+                     )
+                     count += 1
+                 
+                 st.success(f"Loaded {count} examples from '{selected_dataset}' into '{insp_collection}'.")
+                 st.rerun()
+             else:
+                 st.warning("Loading examples only supported for Chroma.")
+
+        except Exception as e:
+            st.error(f"Error loading dataset: {e}")
+
+    # --- Ingestion Form ---
     st.divider()
     st.subheader("Add Document")
     st.caption("Paste text to embed and store in the collection defined above.")
@@ -214,6 +255,7 @@ with inspector_tab:
 
     st.divider()
 
+
     if load_btn:
         try:
             embedder_ref = get_embedder(embedder_choice)
@@ -258,15 +300,13 @@ with demo_tab:
 
     if run_button:
         try:
-            if connector == "Demo":
-                ctx = generate_demo_context(query=query, top_k=top_k, background_k=background_k)
-            else:
-                if embedder_choice == "OpenAI" and openai_key_missing:
-                    raise ValueError("Set `OPENAI_API_KEY` in env or `st.secrets` to use the OpenAI embedder.")
-                embedder = get_embedder(embedder_choice)
-                client, name = build_client(connector, embedder, chroma_collection_name)
-                with st.spinner(f"Querying {name}..."):
-                    ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
+            if embedder_choice == "OpenAI" and openai_key_missing:
+                raise ValueError("Set `OPENAI_API_KEY` in env or `st.secrets` to use the OpenAI embedder.")
+            embedder = get_embedder(embedder_choice)
+            client, name = build_client(connector, embedder, chroma_collection_name)
+            with st.spinner(f"Querying {name}..."):
+                ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
+
 
             df = reduce_query_context(ctx)
             warning = detect_void_warning(df)
@@ -326,6 +366,70 @@ with demo_tab:
                 st.metric("Cosine similarity to query", f"{point['cosine_sim_to_query']:.3f}")
             if point.get("score") is not None:
                 st.metric("DB score/distance", f"{point['score']:.3f}")
+            
+            st.divider()
+            st.subheader("Explain Score")
+            
+            # 1. Token Overlap
+            doc_content = point["metadata"].get("content", "")
+            if doc_content:
+                q_tokens = set(query.lower().split())
+                d_tokens = set(str(doc_content).lower().split())
+                overlap = q_tokens.intersection(d_tokens)
+                
+                if overlap:
+                    st.success(f"Overlapping tokens: {', '.join(overlap)}")
+                else:
+                    st.warning("No overlapping tokens found.")
+                    if point.get("cosine_sim_to_query", 0) > 0.3 and connector == "Chroma":
+                         st.caption("High score without overlap? For 'Demo' embedder, this is likely a random hash collision. For semantic embedders (MiniLM/OpenAI), this indicates semantic similarity.")
+            
+            # 2. Word Similarity Heatmap
+            if doc_content:
+                st.caption("Word Similarity Heatmap: Pairwise cosine similarity.")
+                q_words = [w for w in query.split() if w.strip()]
+                d_words = [w for w in str(doc_content).split() if w.strip()][:15]  # Limit to 15 words
+                
+                if q_words and d_words:
+                    import numpy as np
+                    import pandas as pd
+                    try:
+                        # Re-instantiate a fresh embedder to check raw word vectors
+                        # Note: This technically re-downloads/caches models if not already in memory, 
+                        # but st.cache_resource handles it. 
+                        # Ideally, we'd pass the embedder_ref, but it's local in scope. 
+                        # We'll re-fetch it here safely.
+                        raw_embedder = get_embedder(embedder_choice)
+                        
+                        heatmap_data = []
+                        for q_w in q_words:
+                            row_scores = []
+                            v_q = np.array(raw_embedder(q_w))
+                            for d_w in d_words:
+                                v_d = np.array(raw_embedder(d_w))
+                                # Cosine sim
+                                score = np.dot(v_q, v_d) / (np.linalg.norm(v_q) * np.linalg.norm(v_d) + 1e-9)
+                                row_scores.append(score)
+                            heatmap_data.append(row_scores)
+                        
+                        df_heatmap = pd.DataFrame(heatmap_data, index=q_words, columns=d_words)
+                        st.dataframe(df_heatmap.style.background_gradient(cmap="Reds", axis=None), use_container_width=True)
+                        
+                    except Exception as e:
+                        st.warning(f"Could not generate heatmap: {e}")
+
+            # 3. Vector Barcode
+            query_point = df[df["label"] == "query"].iloc[0]
+            if "vector" in point and point["vector"] is not None and "vector" in query_point:
+                import pandas as pd
+                st.caption("Vector Barcode: Visual comparison of the raw dimensions.")
+                
+                # Create a DataFrame for the bar chart
+                vec_df = pd.DataFrame({
+                    "Query": query_point["vector"],
+                    "Result": point["vector"]
+                })
+                st.bar_chart(vec_df, height=200)
 
         if warning:
             st.warning(warning)

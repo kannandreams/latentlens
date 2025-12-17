@@ -44,6 +44,13 @@ def build_scatter(df: pd.DataFrame, ruler_target_id: Optional[str] = None) -> go
             marker=dict(size=10),
         )
 
+    # Reduce opacity of background points.
+    fig.update_traces(
+        selector=lambda trace: trace.name == "background",
+        opacity=0.3,
+        marker=dict(size=4),
+    )
+
     # Optional distance ruler.
     if ruler_target_id:
         query_point = df[query_idx]

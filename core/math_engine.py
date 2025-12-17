@@ -20,6 +20,7 @@ class ReducedEmbedding:
     y: float
     z: float
     metadata: Dict
+    vector: Optional[List[float]] = None
     score: Optional[float] = None
     cosine_sim_to_query: Optional[float] = None
 
@@ -92,6 +93,7 @@ def reduce_query_context(
                 y=float(coords[1]),
                 z=float(coords[2]),
                 metadata=record.metadata,
+                vector=record.vector,
                 score=record.score,
                 cosine_sim_to_query=cosine_sim,
             )
