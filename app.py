@@ -442,6 +442,20 @@ with demo_tab:
                     "Result": point["vector"]
                 })
                 st.bar_chart(vec_df, height=200)
+                
+                with st.expander("How to read this chart?"):
+                    st.markdown("""
+                    **Visual comparison of raw dimensions**
+                    *   **X-axis**: Dimension index (e.g., 0–63).
+                    *   **Y-axis**: Numeric value.
+                    *   **Dark Blue**: Query | **Light Blue**: Result.
+                    
+                    **Interpretation**:
+                    *   **Good match**: Bars go up/down together (alignment).
+                    *   **Weak match**: One positive, one negative (cancellation).
+                    
+                    *Note: Individual dimensions are abstract and do not map to specific words like "shoes".*
+                    """)
 
         if warning:
             st.warning(warning)
