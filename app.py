@@ -23,6 +23,7 @@ def has_openai_key() -> bool:
 
 APP_AUTHOR = "Kannan Kalidasan"
 APP_WEBSITE = "https://kannandreams.github.io/"
+APP_REPO = "https://github.com/kannandreams/latentlens"
 
 def render_help_panel() -> None:
     st.info(
@@ -90,6 +91,14 @@ with st.sidebar:
         [data-testid="stSidebar"] .sidebar-footer a:hover {
             color: #0b5ed7;
         }
+        .cta-box {
+            background-color: #f0f8ff;
+            border: 1px solid #cce5ff;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -97,8 +106,11 @@ with st.sidebar:
     st.markdown(
         f"""
         <div class="sidebar-footer">
+            <div class="cta-box">
+                If you like this project, give a star to the <a href="{APP_REPO}" target="_blank">repo</a>! ⭐️
+            </div>
             <div style="font-weight: 700;">About</div>
-            <div>Latent Lens is a work in progress. Share feedback or contribute on GitHub.</div>
+            <div>Latent Lens is a work in progress. Share feedback or contribute on <a href="{APP_REPO}" target="_blank">GitHub</a>.</div>
             <div style="margin-top: 0.5rem;">
                 Made by <a href="{APP_WEBSITE}" target="_blank" rel="noopener noreferrer">{APP_AUTHOR}</a>
             </div>
