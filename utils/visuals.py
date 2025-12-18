@@ -56,11 +56,12 @@ def build_scatter(df: pd.DataFrame, ruler_target_id: Optional[str] = None) -> go
 
     # Add trajectory line.
     history_df = df[df["label"] == "history"]
-    query_point = df[df["label"] == "query"]
-    if not history_df.empty and not query_point.empty:
-        path_x = history_df["x"].tolist() + [query_point["x"].iloc[0]]
-        path_y = history_df["y"].tolist() + [query_point["y"].iloc[0]]
-        path_z = history_df["z"].tolist() + [query_point["z"].iloc[0]]
+    query_points = df[df["label"] == "query"]
+    if not history_df.empty and not query_points.empty:
+        query_point = query_points.iloc[0]
+        path_x = history_df["x"].tolist() + [query_point["x"]]
+        path_y = history_df["y"].tolist() + [query_point["y"]]
+        path_z = history_df["z"].tolist() + [query_point["z"]]
         fig.add_trace(
             go.Scatter3d(
                 x=path_x,
@@ -75,16 +76,16 @@ def build_scatter(df: pd.DataFrame, ruler_target_id: Optional[str] = None) -> go
 
     # Optional distance ruler.
     if ruler_target_id:
-        query_point = df[query_idx]
-        target_point = df[df["id"] == ruler_target_id]
-        if not query_point.empty and not target_point.empty:
-            qx, qy, qz = query_point[["x", "y", "z"]].iloc[0]
-            tx, ty, tz = target_point[["x", "y", "z"]].iloc[0]
+        query_points = df[df["label"] == "query"]
+        target_points = df[df["id"] == ruler_target_id]
+        if not query_points.empty and not target_points.empty:
+            qp = query_points.iloc[0]
+            tp = target_points.iloc[0]
             fig.add_trace(
                 go.Scatter3d(
-                    x=[qx, tx],
-                    y=[qy, ty],
-                    z=[qz, tz],
+                    x=[qp["x"], tp["x"]],
+                    y=[qp["y"], tp["y"]],
+                    z=[qp["z"], tp["z"]],
                     mode="lines+text",
                     text=[None, "distance"],
                     textposition="top center",
