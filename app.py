@@ -163,7 +163,7 @@ with st.sidebar:
             <div class="fundraising-section">
                 {img_html}
                 <p style="margin: 8px 0; line-height: 1.4; color: #333;">
-                    I am fundraising for <b>Children with Cancer UK</b> through tech for good initiatives.
+                    Fundraising for <a href="https://www.childrenwithcancer.org.uk/" target="_blank">Children with Cancer UK</a> — thank you for your support 💛 
                 </p>
                 <a href="https://www.justgiving.com/page/kk-cwc-uk?utm_medium=FR&utm_source=CL" target="_blank" class="donate-btn">
                     Donate Now
