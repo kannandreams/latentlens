@@ -11,6 +11,7 @@ from core.connectors import ChromaAdapter
 from core.datasets import EXAMPLE_DATASETS
 from core.math_engine import detect_void_warning, reduce_query_context
 from utils.visuals import build_scatter
+import base64
 
 st.set_page_config(page_title="Latent Lens — Vector Debugger", layout="wide")
 st.title("🔍 Latent Lens")
@@ -106,13 +107,50 @@ with st.sidebar:
             border: 1px solid #cce5ff;
             border-radius: 6px;
             padding: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             font-size: 0.9rem;
+        }
+        .fundraising-section {
+            background-color: #fff5f8;
+            border: 1px solid #ffebeb;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        .fundraising-image {
+            width: 100%;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .donate-btn {
+            display: block;
+            background-color: #92005a;
+            color: white !important;
+            text-align: center;
+            padding: 10px 16px;
+            text-decoration: none !important;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+        }
+        .donate-btn:hover {
+            background-color: #7a004b;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
+    # Base64 encode the fundraising image
+    image_path = "assets/cwc_uk_fundraising.png"
+    try:
+        with open(image_path, "rb") as f:
+            encoded_image = base64.b64encode(f.read()).decode()
+        img_html = f'<img src="data:image/png;base64,{encoded_image}" class="fundraising-image" alt="Children with Cancer UK">'
+    except FileNotFoundError:
+        img_html = "" # Fallback if image missing
+
     st.markdown(
         f"""
         <div class="sidebar-footer">
@@ -121,11 +159,15 @@ with st.sidebar:
             </div>
             <div style="margin-top: 0.5rem;">
                 Built by <a href="{APP_WEBSITE}" target="_blank" rel="noopener noreferrer">{APP_AUTHOR}</a>
-                <div style="margin-top: 10px;">
-                    <a href="https://www.buymeacoffee.com/kannandreams" target="_blank">
-                        <img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=kannandreams&button_colour=FFDD00&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=ffffff" alt="Buy Me A Coffee" />
-                    </a>
-                </div>
+            </div>
+            <div class="fundraising-section">
+                {img_html}
+                <p style="margin: 8px 0; line-height: 1.4; color: #333;">
+                    I am fundraising for <b>Children with Cancer UK</b> through tech for good initiatives.
+                </p>
+                <a href="https://www.justgiving.com/page/kk-cwc-uk?utm_medium=FR&utm_source=CL" target="_blank" class="donate-btn">
+                    Donate Now
+                </a>
             </div>
         </div>
         """,
