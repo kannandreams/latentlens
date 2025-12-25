@@ -78,11 +78,8 @@ with st.sidebar:
         st.session_state["query_history"] = []
         st.rerun()
 
-    openai_key_missing = embedder_choice == "OpenAI" and not has_openai_key()
-    if openai_key_missing:
-        st.warning(
-            "OpenAI embedder selected but no `OPENAI_API_KEY` found. Set it in the environment or `st.secrets`."
-        )
+    if embedder_choice == "OpenAI":
+        st.warning("OpenAI integration is not fully implemented yet. Please use 'Demo' or 'MiniLM' for now.")
 
     st.markdown(
         """
@@ -193,17 +190,20 @@ with inspector_tab:
             reset_btn = st.button("Reset Collection", key="insp_reset_btn", type="primary")
 
     if reset_btn:
-        try:
-             embedder_ref = get_embedder(embedder_choice)
-             c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
-             if isinstance(c_client, ChromaAdapter):
-                 count = c_client.reset_collection()
-                 st.success(f"Deleted {count} records from '{insp_collection}'.")
-                 st.rerun()
-             else:
-                 st.warning("Reset only supported for Chroma.")
-        except Exception as e:
-             st.error(f"Error resetting collection: {e}")
+        if embedder_choice == "OpenAI":
+            st.error("OpenAI integration is not available yet. Please use another embedder.")
+        else:
+            try:
+                 embedder_ref = get_embedder(embedder_choice)
+                 c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
+                 if isinstance(c_client, ChromaAdapter):
+                     count = c_client.reset_collection()
+                     st.success(f"Deleted {count} records from '{insp_collection}'.")
+                     st.rerun()
+                 else:
+                     st.warning("Reset only supported for Chroma.")
+            except Exception as e:
+                 st.error(f"Error resetting collection: {e}")
 
 
     # --- Load Example Dataset ---
@@ -224,29 +224,32 @@ with inspector_tab:
         load_ds_btn = st.button("Load Dataset", key="load_ds_btn")
 
     if load_ds_btn:
-        try:
-             embedder_ref = get_embedder(embedder_choice)
-             c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
-             
-             if isinstance(c_client, ChromaAdapter):
-                 records = EXAMPLE_DATASETS[selected_dataset]
-                 count = 0
-                 for item in records:
-                     doc_id = f"ex-{uuid.uuid4().hex[:6]}"
-                     c_client.add_text(
-                         doc_id=doc_id, 
-                         text=item["content"], 
-                         metadata=item.get("metadata")
-                     )
-                     count += 1
+        if embedder_choice == "OpenAI":
+            st.error("OpenAI integration is not available yet. Please use another embedder.")
+        else:
+            try:
+                 embedder_ref = get_embedder(embedder_choice)
+                 c_client, _ = build_client("Chroma", embedder_ref, insp_collection)
                  
-                 st.success(f"Loaded {count} examples from '{selected_dataset}' into '{insp_collection}'.")
-                 st.rerun()
-             else:
-                 st.warning("Loading examples only supported for Chroma.")
-
-        except Exception as e:
-            st.error(f"Error loading dataset: {e}")
+                 if isinstance(c_client, ChromaAdapter):
+                     records = EXAMPLE_DATASETS[selected_dataset]
+                     count = 0
+                     for item in records:
+                         doc_id = f"ex-{uuid.uuid4().hex[:6]}"
+                         c_client.add_text(
+                             doc_id=doc_id, 
+                             text=item["content"], 
+                             metadata=item.get("metadata")
+                         )
+                         count += 1
+                     
+                     st.success(f"Loaded {count} examples from '{selected_dataset}' into '{insp_collection}'.")
+                     st.rerun()
+                 else:
+                     st.warning("Loading examples only supported for Chroma.")
+    
+            except Exception as e:
+                st.error(f"Error loading dataset: {e}")
 
     # --- Ingestion Form ---
     st.divider()
@@ -262,9 +265,9 @@ with inspector_tab:
             st.session_state["ingest_message"] = ("error", "Please paste document text before storing it.")
             return
 
-        if embedder_choice == "OpenAI" and not has_openai_key():
-                st.session_state["ingest_message"] = ("error", "Set `OPENAI_API_KEY` before using the OpenAI embedder.")
-                return
+        if embedder_choice == "OpenAI":
+            st.session_state["ingest_message"] = ("warning", "OpenAI integration is not fully implemented yet. Please use 'Demo' or 'MiniLM' for now.")
+            return
 
         try:
             embedder = get_embedder(embedder_choice)
@@ -381,37 +384,40 @@ with trajectory_tab:
              traj_bg_k = 0
 
     if add_traj and traj_query.strip():
-        try:
-            embedder = get_embedder(embedder_choice)
-            client, _ = build_client(connector, embedder, st.session_state.get("insp_col_name", "default").strip())
-            
-            # 1. Embed current step
-            vec = embedder(traj_query.strip())
-            
-            # 2. Add to dedicated traj history
-            if "traj_history" not in st.session_state:
-                st.session_state["traj_history"] = []
-            
-            st.session_state["traj_history"].append({"query": traj_query.strip(), "vector": vec})
-            
-            # 3. Retrieve context for the latest step (optional, but requested "The Wow Moment")
-            ctx = client.retrieve_with_background(query=traj_query.strip(), top_k=top_k, background_k=traj_bg_k)
-            
-            # 4. Reduce WITH all traj steps as 'history'
-            from core.connectors import VectorRecord, QueryWithContext
-            traj_records = []
-            # All but the last one are history
-            for h in st.session_state["traj_history"][:-1]:
-                 traj_records.append(
-                     VectorRecord(id=f"traj-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
-                 )
-            
-            df_traj = reduce_query_context(ctx, history=traj_records)
-            st.session_state["traj_df"] = df_traj
-            st.rerun()
+        if embedder_choice == "OpenAI":
+            st.error("OpenAI integration is not available yet. Please use another embedder.")
+        else:
+            try:
+                embedder = get_embedder(embedder_choice)
+                client, _ = build_client(connector, embedder, st.session_state.get("insp_col_name", "default").strip())
+                
+                # 1. Embed current step
+                vec = embedder(traj_query.strip())
+                
+                # 2. Add to dedicated traj history
+                if "traj_history" not in st.session_state:
+                    st.session_state["traj_history"] = []
+                
+                st.session_state["traj_history"].append({"query": traj_query.strip(), "vector": vec})
+                
+                # 3. Retrieve context for the latest step (optional, but requested "The Wow Moment")
+                ctx = client.retrieve_with_background(query=traj_query.strip(), top_k=top_k, background_k=traj_bg_k)
+                
+                # 4. Reduce WITH all traj steps as 'history'
+                from core.connectors import VectorRecord, QueryWithContext
+                traj_records = []
+                # All but the last one are history
+                for h in st.session_state["traj_history"][:-1]:
+                     traj_records.append(
+                         VectorRecord(id=f"traj-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
+                     )
+                
+                df_traj = reduce_query_context(ctx, history=traj_records)
+                st.session_state["traj_df"] = df_traj
+                st.rerun()
 
-        except Exception as e:
-            st.error(f"Trajectory error: {e}")
+            except Exception as e:
+                st.error(f"Trajectory error: {e}")
 
     # Display Trajectory
     if st.session_state.get("traj_history"):
@@ -448,8 +454,9 @@ with demo_tab:
 
     if run_button:
         try:
-            if embedder_choice == "OpenAI" and openai_key_missing:
-                raise ValueError("Set `OPENAI_API_KEY` in env or `st.secrets` to use the OpenAI embedder.")
+            if embedder_choice == "OpenAI":
+                st.info("OpenAI integration is not available yet. Please select another embedder.")
+                st.stop()
             embedder = get_embedder(embedder_choice)
             client, name = build_client(connector, embedder, chroma_collection_name)
             with st.spinner(f"Querying {name}..."):
