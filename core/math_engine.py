@@ -51,10 +51,13 @@ def reduce_query_context(
         VectorRecord(id="__query__", vector=ctx.query_vector, metadata={"query": ctx.query})
     ]
     
-    # Insert history right after query
+    # Insert history right after query (filter by dimensions to avoid inhomogeneous arrays)
     if history:
-        base_records.extend(history)
-        labels.extend(["history"] * len(history))
+        current_dim = len(ctx.query_vector)
+        valid_history = [h for h in history if len(h.vector) == current_dim]
+        if valid_history:
+            base_records.extend(valid_history)
+            labels.extend(["history"] * len(valid_history))
 
     base_records.extend(ctx.results)
     labels.extend(["result"] * len(ctx.results))

@@ -67,6 +67,19 @@ with st.sidebar:
         index=0,
         help="Embedding model used to encode the query (and any fetched records).",
     )
+
+    # Auto-clear history if embedder changes to avoid dimension mismatch
+    if "prev_embedder" not in st.session_state:
+        st.session_state["prev_embedder"] = embedder_choice
+    
+    if st.session_state["prev_embedder"] != embedder_choice:
+        st.session_state["query_history"] = []
+        if "traj_history" in st.session_state:
+             st.session_state["traj_history"] = []
+        if "traj_df" in st.session_state:
+             st.session_state["traj_df"] = None
+        st.session_state["prev_embedder"] = embedder_choice
+        st.toast(f"Switched embedder to {embedder_choice}. History cleared to prevent dimension mismatch.")
     run_button = st.button(
         "Run Latent Lens",
         help="Execute the retrieval + visualization with the current settings.",
@@ -460,30 +473,38 @@ with demo_tab:
             if embedder_choice == "OpenAI":
                 st.info("OpenAI integration is not available yet. Please select another embedder.")
                 st.stop()
-            embedder = get_embedder(embedder_choice)
-            client, name = build_client(connector, embedder, chroma_collection_name)
-            with st.spinner(f"Querying {name}..."):
+                
+            with st.status("🔍 Latent Lens: Running...", expanded=True) as status:
+                status.write("Initializing embedder...")
+                embedder = get_embedder(embedder_choice)
+                
+                status.write(f"Connecting to {connector}...")
+                client, name = build_client(connector, embedder, chroma_collection_name)
+                
+                status.write(f"Retrieving top {top_k} results + {background_k} background samples...")
                 ctx = client.retrieve_with_background(query=query, top_k=top_k, background_k=background_k)
 
-            from core.connectors import VectorRecord
-            
-            # Prepare history (last 5 previous queries)
-            history_records = []
-            for h in st.session_state["query_history"][-5:]:
-                 history_records.append(
-                     VectorRecord(id=f"history-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
-                 )
+                from core.connectors import VectorRecord
+                
+                # Prepare history (last 5 previous queries)
+                history_records = []
+                for h in st.session_state["query_history"][-5:]:
+                     history_records.append(
+                         VectorRecord(id=f"history-{h['query']}", vector=h['vector'], metadata={"query": h['query']})
+                     )
 
-            df = reduce_query_context(ctx, history=history_records)
-            
-            # Save current for next run
-            current_entry = {"query": query, "vector": ctx.query_vector}
-            if not st.session_state["query_history"] or st.session_state["query_history"][-1]["query"] != query:
-                st.session_state["query_history"].append(current_entry)
-            warning = detect_void_warning(df)
+                status.write("Reducing dimensions (PCA + UMAP)...")
+                df = reduce_query_context(ctx, history=history_records)
+                
+                # Save current for next run
+                current_entry = {"query": query, "vector": ctx.query_vector}
+                if not st.session_state["query_history"] or st.session_state["query_history"][-1]["query"] != query:
+                    st.session_state["query_history"].append(current_entry)
+                warning = detect_void_warning(df)
 
-            st.session_state["viz_df"] = df
-            st.session_state["viz_warning"] = warning
+                st.session_state["viz_df"] = df
+                st.session_state["viz_warning"] = warning
+                status.update(label="Analysis complete!", state="complete", expanded=False)
         except Exception as exc:
             st.error(f"Error: {exc}")
 
