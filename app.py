@@ -33,7 +33,10 @@ def render_help_panel() -> None:
 2. **Configure**: In the sidebar, pick an `Embedder` (Demo is fast, MiniLM is local semantic, OpenAI requires a key).
 3. **Explore**: Go to the **Explorer** tab, enter a query, and click `Run Latent Lens` to see the results in 3D.
 4. **Inspect**: Click on any point in the visualization to see its metadata and similarity scores.
-5. **Trajectory**: Use the **Query Trajectory** tab to see how adding words shifts the "meaning" of your search."""
+5. **Trajectory**: Use the **Query Trajectory** tab to see how adding words shifts the "meaning" of your search.
+
+> [!TIP]
+> **Switching Embedders?** If you switch models (e.g., from Demo to MiniLM), you **must** click **Reset Collection** in the Manage Collection tab first. Different models use different vector sizes (64 vs 384), and mixing them will cause a "Dimension mismatch" error."""
     )
 
 

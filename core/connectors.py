@@ -188,10 +188,14 @@ class ChromaAdapter(VectorDBClient):
     def __init__(
         self,
         collection: Any,
+        client: Any,
+        collection_name: str,
         embedder: Optional[Callable[[str], Vector]] = None,
     ) -> None:
         super().__init__(embedder=embedder)
         self.collection = collection
+        self.client = client
+        self.collection_name = collection_name
 
     def add_text(self, doc_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Embed and store a single text snippet in the collection."""
@@ -309,14 +313,11 @@ class ChromaAdapter(VectorDBClient):
         return records
 
     def reset_collection(self) -> int:
-        """Delete all records in the collection."""
-        all_records = self.list_records(limit=10000)
-        if not all_records:
-            return 0
-        
-        ids_to_delete = [rec.id for rec in all_records]
-        self.collection.delete(ids=ids_to_delete)
-        return len(ids_to_delete)
+        """Delete and recreate the collection to reset dimensionality metadata."""
+        count = self.collection.count()
+        self.client.delete_collection(name=self.collection_name)
+        self.collection = self.client.get_or_create_collection(name=self.collection_name)
+        return count
 
 
 class QdrantAdapter(VectorDBClient):

@@ -45,15 +45,22 @@ def demo_embedder(text: str) -> list[float]:
 
 
 @st.cache_resource(show_spinner=False)
-def _load_minilm(model_name: str) -> "SentenceTransformer":
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(model_name)
+def _load_minilm(model_name: str):
+    try:
+        from sentence_transformers import SentenceTransformer
+        return SentenceTransformer(model_name)
+    except ImportError:
+        return None
 
 
 def local_minilm_embedder(model: str = "sentence-transformers/paraphrase-MiniLM-L3-v2") -> Callable[[str], list[float]]:
     """Lightweight local embedder (256-dim MiniLM)."""
     encoder = _load_minilm(model)
+    if encoder is None:
+        raise ImportError(
+            "The library 'sentence-transformers' is not installed. "
+            "Please install it via `pip install sentence-transformers` to use local semantic models."
+        )
 
     def _embed(text: str) -> list[float]:
         vector = encoder.encode(text, convert_to_numpy=True, show_progress_bar=False)
@@ -109,6 +116,8 @@ def build_chroma_client(
     collection = client.get_or_create_collection(collection_name)
     return ChromaAdapter(
         collection=collection,
+        client=client,
+        collection_name=collection_name,
         embedder=embedder,
     )
 

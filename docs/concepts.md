@@ -100,6 +100,24 @@ For a deeper dive into vector search and similarity, check out these resources:
  - **Semantic**: Ensure your query is relevant to the collection's domain.
 
  ---
+ 
+## 6. Dimensionality Consistency
+
+Vector databases are sensitive to the **length** of the vectors you store. Each embedding model has its own signature length:
+- **Demo Embedder**: 64 dimensions.
+- **MiniLM (local)**: 384 dimensions.
+- **OpenAI**: 1536 dimensions.
+
+### The "Dimension Mismatch" Error
+If you start a collection with the **Demo** embedder and later switch to **MiniLM**, Chroma will reject the new vectors. This is because consistency is required to calculate similarity scores.
+
+**How to fix:**
+1. Go to the **Manage Collection** tab.
+2. Click **Reset Collection** to clear the old records.
+3. Switch to your desired embedder in the sidebar.
+4. Load a dataset or add new documents.
+
+---
 
 ## Glossary
 - **Connector**: Backend that holds your vectors (Chroma is the standard local DB used here).
