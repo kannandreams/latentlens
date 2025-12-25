@@ -29,11 +29,11 @@ APP_REPO = "https://github.com/kannandreams/latentlens"
 def render_help_panel() -> None:
     st.info(
         """**How to use Latent Lens**
-- Pick a connector and embedder in the sidebar. Demo generates synthetic data; Chroma reads/writes a real collection.
-- Tune `Top K results` and `Background samples` to control retrieval depth and how much context appears in the 3D plot.
-- Enter a query and click `Run Latent Lens` to embed the text and fetch nearest neighbors.
-- In `Visualization`, optionally draw a distance ruler to a result and pick any point to inspect its metadata and scores.
-- Using Chroma? Paste document text under "Chroma: store pasted text" to embed and save it into the active collection."""
+1. **Load Data**: Go to the **Manage Collection** tab to load a preset example dataset or paste your own text.
+2. **Configure**: In the sidebar, pick an `Embedder` (Demo is fast, MiniLM is local semantic, OpenAI requires a key).
+3. **Explore**: Go to the **Explorer** tab, enter a query, and click `Run Latent Lens` to see the results in 3D.
+4. **Inspect**: Click on any point in the visualization to see its metadata and similarity scores.
+5. **Trajectory**: Use the **Query Trajectory** tab to see how adding words shifts the "meaning" of your search."""
     )
 
 

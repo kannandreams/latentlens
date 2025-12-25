@@ -102,7 +102,7 @@ For a deeper dive into vector search and similarity, check out these resources:
  ---
 
 ## Glossary
-- **Connector**: Backend that holds your vectors (Demo = synthetic, Chroma = local DB).
+- **Connector**: Backend that holds your vectors (Chroma is the standard local DB used here).
 - **Embedder**: Model used to turn text into vectors (MiniLM local, OpenAI remote).
 - **Top K results**: Number of nearest neighbors returned from the vector DB.
 - **Background samples**: Random vectors for context, shown as gray points.
